@@ -175,13 +175,25 @@
     "inList": "In watchlist"
   },
   "alert": {
-    "title": "Price alert · {symbol}",
-    "condition": "Notify me when the price goes",
-    "above": "Above",
-    "below": "Below",
+    "title": "Alerts · {symbol}",
+    "type": "Notify me when",
+    "types": {
+      "price_above": "Price goes above",
+      "price_below": "Price goes below",
+      "near_level": "Near a key level",
+      "breakout": "Breaks a key level"
+    },
     "price": "Target price (USD)",
+    "currentPrice": "Current price: {price}",
+    "pickLevel": "Choose a level ({range} chart)",
+    "noLevels": "No levels found for this range.",
+    "nearHelp": "Fires when the price comes within {pct}% of the level.",
+    "breakoutHelp": "Fires when a candle closes beyond the level’s zone (above a resistance, below a support).",
+    "willNotify": "You’ll be notified when:",
     "save": "Save alert",
-    "phaseNote": "Alerts are saved and checked on the server from Phase 5. This form is a preview."
+    "saveFailed": "Couldn’t save the alert.",
+    "savedNoNotifications": "Alert saved. Browser notifications are blocked, so it will show inside the app only. You can allow notifications in your browser’s site settings.",
+    "existing": "Active alerts for this stock ({count})"
   },
   "compare": {
     "title": "Compare {symbol} with…",
@@ -213,5 +225,26 @@
     },
     "pivots": "Pivot points",
     "pivotsFrom": "from {date} session"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "activeCount": "{count} active",
+    "empty": "No alerts yet. Use “Set price alert” or the bell on a key level.",
+    "statusActive": "Active",
+    "statusTriggered": "Triggered",
+    "firedAt": "Triggered at {price} · {time}",
+    "delete": "Delete alert: {condition}",
+    "toastTitle": "{symbol} alert",
+    "dismiss": "Dismiss",
+    "more": "+{count} more",
+    "triggeredAt": "{symbol} at {price}: {condition}",
+    "levelAlert": "Set an alert for {label} ({price})",
+    "cond": {
+      "price_above": "price at or above {price}",
+      "price_below": "price at or below {price}",
+      "near_level": "price within {pct}% of {kind} {price} ({range})",
+      "breakout_up": "a {size} candle closes above the {kind} zone {zone}",
+      "breakout_down": "a {size} candle closes below the {kind} zone {zone}"
+    }
   }
 }

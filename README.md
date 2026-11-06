@@ -20,6 +20,9 @@ Optional: copy `server/.env.example` to `server/.env` and add keys (`FINNHUB_API
 
 Mock-only switch to preview market states: `MOCK_MARKET_STATE=open | closed | delayed` in `server/.env`.
 
+Storage: SQLite at `server/data/trading.db` (git-ignored), created and migrated automatically by `pnpm dev`.
+Holds the watchlist, alerts and cached AI outputs.
+
 ## Where things live
 
 - Provider interface: `server/src/providers/types.ts`
@@ -27,16 +30,18 @@ Mock-only switch to preview market states: `MOCK_MARKET_STATE=open | closed | de
 - Cache interface + in-memory LRU (swap for Redis later): `server/src/cache/cache.ts`
 - Cache lifetimes: `server/src/config/cache-ttl.ts`
 - WebSocket fan-out + 1 update/s/symbol throttle: `server/src/realtime/hub.ts`
+- Alert engine: `server/src/alerts/alert-service.ts`
+- Database schema: `server/prisma/schema.prisma`
 - UI strings: `web/messages/en.json`, `web/messages/th.json`
 
 ## Status
 
 - [x] Phase 1: scaffold + mock data
-- [x] Phase 2: live prices (Finnhub) + chart history (Twelve Data intraday, FMP daily) — live ticks still to be verified during US market hours
+- [x] Phase 2: live prices (Finnhub) + chart history (Twelve Data intraday, FMP daily) — live ticks verified in pre-market
 - [x] Phase 3: news + sentiment (AI summary/sentiment need `ANTHROPIC_API_KEY`; without it, keyword-rule sentiment)
 - [x] Phase 3.5: support & resistance levels + pivot points
 - [x] Phase 4: company insight (FMP profile/estimates/targets/ratings/earnings; guidance from SEC filings, extracted by Claude when `ANTHROPIC_API_KEY` is set)
-- [ ] Phase 5: watchlist (SQLite/Prisma), search, price + level alerts
+- [x] Phase 5: watchlist (SQLite/Prisma), search, price + level alerts with browser notifications
 - [ ] Phase 6: polish, tests, full README
 
 ## Tests

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 import { useLevels } from '@/lib/api';
 import { fmtDate, fmtIsoDate, fmtNumber, fmtPrice, fmtSignedPct } from '@/lib/format';
+import { BellIcon } from './icons';
 import { Card, cx, ErrorState, Missing, Skeleton, SourceLine, useLang } from './ui';
 
 const KIND_TEXT = { support: 'text-accent', resistance: 'text-[#F2994A]' } as const;
@@ -12,7 +13,7 @@ const KIND_BAR = { support: 'bg-accent', resistance: 'bg-[#F2994A]' } as const;
 const DOTS: Record<LevelStrength, number> = { weak: 1, medium: 2, strong: 3 };
 
 /** Nearest supports / resistances for the selected range. Descriptive only — no buy/sell wording. */
-export function KeyLevelsCard({ symbol, range, quote }: { symbol: string; range: Range; quote: Quote | undefined }) {
+export function KeyLevelsCard({ symbol, range, quote, onAlert }: { symbol: string; range: Range; quote: Quote | undefined; onAlert?: (l: PriceLevel) => void }) {
   const t = useTranslations('levels');
   const tc = useTranslations('chart');
   const lang = useLang();
@@ -62,7 +63,7 @@ export function KeyLevelsCard({ symbol, range, quote }: { symbol: string; range:
           <ol className="space-y-1.5" aria-label={t('ladder')}>
             {resistances.length === 0 && <li><Missing inline note={t('noResistance')} /></li>}
             {[...resistances].reverse().map((l, i) => (
-              <LevelRow key={`r${l.price}`} level={l} label={`R${resistances.length - i}`} price={price} currency={cur} intraday={intraday} />
+              <LevelRow key={`r${l.price}`} level={l} label={`R${resistances.length - i}`} price={price} currency={cur} intraday={intraday} onAlert={onAlert} />
             ))}
             <li className="flex items-center gap-2 py-1" aria-label={t('currentPrice')}>
               <span className="h-px flex-1 bg-text/40" aria-hidden />
@@ -72,7 +73,7 @@ export function KeyLevelsCard({ symbol, range, quote }: { symbol: string; range:
               <span className="h-px flex-1 bg-text/40" aria-hidden />
             </li>
             {supports.map((l, i) => (
-              <LevelRow key={`s${l.price}`} level={l} label={`S${i + 1}`} price={price} currency={cur} intraday={intraday} />
+              <LevelRow key={`s${l.price}`} level={l} label={`S${i + 1}`} price={price} currency={cur} intraday={intraday} onAlert={onAlert} />
             ))}
             {supports.length === 0 && <li><Missing inline note={t('noSupport')} /></li>}
           </ol>
@@ -101,8 +102,9 @@ export function KeyLevelsCard({ symbol, range, quote }: { symbol: string; range:
   );
 }
 
-function LevelRow({ level, label, price, currency, intraday }: { level: PriceLevel; label: string; price: number | null; currency: string; intraday: boolean }) {
+function LevelRow({ level, label, price, currency, intraday, onAlert }: { level: PriceLevel; label: string; price: number | null; currency: string; intraday: boolean; onAlert?: (l: PriceLevel) => void }) {
   const t = useTranslations('levels');
+  const ta = useTranslations('alerts');
   const lang = useLang();
   const dist = price ? ((level.price - price) / price) * 100 : null;
   const touched = intraday
@@ -118,6 +120,17 @@ function LevelRow({ level, label, price, currency, intraday }: { level: PriceLev
         <span className="w-[4.75rem] shrink-0 whitespace-nowrap text-right font-mono text-xs tabular-nums text-muted" title={t('distance')}>
           <span aria-hidden>{dist != null && dist > 0 ? '▲' : '▼'}</span> {fmtSignedPct(dist, lang)}
         </span>
+        {onAlert && (
+          <button
+            type="button"
+            onClick={() => onAlert(level)}
+            aria-label={ta('levelAlert', { label, price: fmtPrice(level.price, lang, currency) })}
+            title={ta('levelAlert', { label, price: fmtPrice(level.price, lang, currency) })}
+            className="-my-2 -mr-1 inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-accent"
+          >
+            <BellIcon width={15} height={15} />
+          </button>
+        )}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-9 text-[11px] text-muted">
         <span className="font-mono">

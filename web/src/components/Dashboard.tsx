@@ -1,12 +1,14 @@
 'use client';
 
-import type { Range } from '@tm/shared';
+import type { PriceLevel, Range } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useMeta } from '@/lib/api';
 import { useLiveQuote } from '@/lib/use-live-quote';
 import { ChartCard } from './ChartCard';
-import { AlertDialog, CompareDialog, Modal } from './Dialogs';
+import { AlertCenter } from './AlertCenter';
+import { AlertsPanel } from './AlertsPanel';
+import { AlertDialog, CompareDialog, Modal, type AlertPreset } from './Dialogs';
 import { Header } from './Header';
 import { InsightCards } from './InsightCards';
 import { KeyLevelsCard } from './KeyLevelsCard';
@@ -26,6 +28,11 @@ export function Dashboard({ symbol }: { symbol: string }) {
   const [tab, setTab] = useState<Tab>('news');
   const [compare, setCompare] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'alert' | 'compare' | 'watchlist' | null>(null);
+  const [alertPreset, setAlertPreset] = useState<AlertPreset>(null);
+  const openAlert = (level?: PriceLevel) => {
+    setAlertPreset(level ? { kind: 'near_level', level } : null);
+    setDialog('alert');
+  };
   const live = useLiveQuote(symbol, true);
 
   // Remember the chosen range per browser (convenience only).
@@ -61,8 +68,9 @@ export function Dashboard({ symbol }: { symbol: string }) {
 
       <div className="mx-auto w-full max-w-[1600px] flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
-          <div className="sticky top-20">
+          <div className="sticky top-20 space-y-4">
             <Watchlist current={symbol} />
+            <AlertsPanel />
           </div>
         </aside>
 
@@ -75,7 +83,7 @@ export function Dashboard({ symbol }: { symbol: string }) {
               streaming={live.streaming}
               onRetry={() => live.mutate()}
               compare={compare}
-              onAlert={() => setDialog('alert')}
+              onAlert={() => openAlert()}
               onCompare={() => setDialog('compare')}
               onStopCompare={() => setCompare(null)}
             />
@@ -84,7 +92,7 @@ export function Dashboard({ symbol }: { symbol: string }) {
             <ChartCard symbol={symbol} range={range} onRange={changeRange} quote={live.data} streaming={live.streaming} compare={compare} />
           </div>
           <div className="area-levels min-w-0">
-            <KeyLevelsCard symbol={symbol} range={range} quote={live.data} />
+            <KeyLevelsCard symbol={symbol} range={range} quote={live.data} onAlert={(l) => openAlert(l)} />
           </div>
 
           {/* Phone only: tabs for the panels below the chart */}
@@ -124,11 +132,13 @@ export function Dashboard({ symbol }: { symbol: string }) {
       <Footer />
 
       <Modal side open={dialog === 'watchlist'} onClose={() => setDialog(null)} title={t('watchlist.title')}>
-        <div className="p-3">
+        <div className="space-y-3 p-3">
           <Watchlist current={symbol} onNavigate={() => setDialog(null)} />
+          <AlertsPanel onNavigate={() => setDialog(null)} />
         </div>
       </Modal>
-      <AlertDialog open={dialog === 'alert'} onClose={() => setDialog(null)} symbol={symbol} quote={live.data} />
+      <AlertDialog open={dialog === 'alert'} onClose={() => setDialog(null)} symbol={symbol} quote={live.data} range={range} preset={alertPreset} />
+      <AlertCenter />
       <CompareDialog open={dialog === 'compare'} onClose={() => setDialog(null)} symbol={symbol} onPick={setCompare} />
     </div>
   );

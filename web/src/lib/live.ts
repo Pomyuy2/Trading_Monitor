@@ -1,6 +1,6 @@
 'use client';
 
-import type { ClientMessage, ServerMessage } from '@tm/shared';
+import type { Alert, ClientMessage, ServerMessage } from '@tm/shared';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 export interface LiveTick {
@@ -21,6 +21,7 @@ export type ConnState = 'connecting' | 'open' | 'closed';
 class LiveFeed {
   private ws: WebSocket | null = null;
   private listeners = new Map<string, Set<TickListener>>();
+  private alertListeners = new Set<(a: Alert) => void>();
   private latest = new Map<string, LiveTick>();
   private stateListeners = new Set<() => void>();
   private backoff = 1000;
@@ -64,6 +65,10 @@ class LiveFeed {
       } catch {
         return;
       }
+      if (msg.type === 'alert') {
+        this.alertListeners.forEach((cb) => cb(msg.alert));
+        return;
+      }
       if (msg.type !== 'tick') return;
       const tick: LiveTick = { symbol: msg.symbol, price: msg.price, ts: msg.ts, volume: msg.volume };
       this.latest.set(msg.symbol, tick);
@@ -72,7 +77,7 @@ class LiveFeed {
     ws.onclose = () => {
       this.ws = null;
       this.setState('closed');
-      if (this.listeners.size === 0) return;
+      if (this.listeners.size === 0 && this.alertListeners.size === 0) return;
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
         this.connect();
@@ -104,10 +109,19 @@ class LiveFeed {
         this.latest.delete(symbol);
         this.send({ type: 'unsubscribe', symbols: [symbol] });
       }
-      if (this.listeners.size === 0 && this.reconnectTimer) {
+      if (this.listeners.size === 0 && this.alertListeners.size === 0 && this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
       }
+    };
+  }
+
+  /** Triggered alerts pushed by the server. Keeps the socket open. */
+  onAlert(cb: (a: Alert) => void): () => void {
+    this.alertListeners.add(cb);
+    this.connect();
+    return () => {
+      this.alertListeners.delete(cb);
     };
   }
 

@@ -1,7 +1,9 @@
 'use client';
 
 import type {
+  Alert,
   CandleSeries,
+  NewAlert,
   InsightResponse,
   Lang,
   LevelsResponse,
@@ -102,4 +104,42 @@ export async function removeFromWatchlist(symbol: string) {
     },
     { optimisticData: (cur) => (cur ?? []).filter((i) => i.symbol !== symbol), rollbackOnError: true, revalidate: false },
   );
+}
+
+// ---------- alerts ----------
+const ALERTS_KEY = '/api/alerts';
+
+/** All alerts (active + triggered), newest first. Pushed updates arrive over the WebSocket. */
+export function useAlerts() {
+  return useSWR<Alert[]>(ALERTS_KEY, fetchJson, { refreshInterval: 60_000 });
+}
+
+export async function createAlert(input: NewAlert): Promise<Alert> {
+  const alert = await fetchJson<Alert>(ALERTS_KEY, { method: 'POST', body: JSON.stringify(input) });
+  await mutate<Alert[]>(ALERTS_KEY, (cur) => [alert, ...(cur ?? [])], { revalidate: false });
+  return alert;
+}
+
+export async function deleteAlert(id: string) {
+  await mutate<Alert[]>(
+    ALERTS_KEY,
+    async (cur) => {
+      await fetch(`${ALERTS_KEY}/${enc(id)}`, { method: 'DELETE' });
+      return (cur ?? []).filter((x) => x.id !== id);
+    },
+    { optimisticData: (cur) => (cur ?? []).filter((x) => x.id !== id), rollbackOnError: true, revalidate: false },
+  );
+}
+
+export async function markAlertSeen(id: string) {
+  await fetch(`${ALERTS_KEY}/${enc(id)}/seen`, { method: 'POST' });
+  await mutate<Alert[]>(ALERTS_KEY, (cur) => (cur ?? []).map((x) => (x.id === id ? { ...x, seen: true } : x)), { revalidate: false });
+}
+
+/** Merge a pushed (triggered) alert into the cached list. */
+export function applyAlertUpdate(alert: Alert) {
+  void mutate<Alert[]>(ALERTS_KEY, (cur) => {
+    const list = cur ?? [];
+    return list.some((x) => x.id === alert.id) ? list.map((x) => (x.id === alert.id ? alert : x)) : [alert, ...list];
+  }, { revalidate: false });
 }

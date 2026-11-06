@@ -69,6 +69,21 @@ export class RealtimeHub {
     this.release([...subs]);
   }
 
+  /** Server-side subscribers (e.g. alerts) keep a symbol streaming with no browser connected. */
+  retainInternal(symbols: string[]) {
+    this.retain(symbols);
+  }
+
+  releaseInternal(symbols: string[]) {
+    this.release(symbols);
+  }
+
+  /** Push a message to every connected browser (single-user app). */
+  broadcastAll(msg: ServerMessage) {
+    const data = JSON.stringify(msg);
+    for (const ws of this.clients.keys()) if (ws.readyState === ws.OPEN) ws.send(data);
+  }
+
   private retain(symbols: string[]) {
     const started: string[] = [];
     for (const s of symbols) {

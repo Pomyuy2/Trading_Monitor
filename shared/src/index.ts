@@ -297,6 +297,35 @@ export interface MetaResponse {
   mockCapabilities: string[];
 }
 
+// ---- Alerts ----
+export type AlertKind = 'price_above' | 'price_below' | 'near_level' | 'breakout';
+export const NEAR_LEVEL_PCT = 1; // "price within 1% of a level"
+
+export interface AlertLevel {
+  kind: 'support' | 'resistance';
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  range: Range; // chart range the level came from
+}
+
+export interface Alert {
+  id: string;
+  symbol: string;
+  kind: AlertKind;
+  targetPrice: number | null;
+  level: AlertLevel | null;
+  status: 'active' | 'triggered';
+  createdAt: string;
+  triggeredAt: string | null;
+  triggerPrice: number | null;
+  seen: boolean;
+}
+
+export type NewAlert =
+  | { symbol: string; kind: 'price_above' | 'price_below'; targetPrice: number }
+  | { symbol: string; kind: 'near_level' | 'breakout'; level: AlertLevel };
+
 // ---- WebSocket protocol ----
 export type ClientMessage =
   | { type: 'subscribe'; symbols: string[] }
@@ -304,6 +333,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'tick'; symbol: string; price: number; ts: number; volume?: number }
+  | { type: 'alert'; alert: Alert }
   | { type: 'error'; message: string };
 
 export function normalizeSymbol(s: string): string {

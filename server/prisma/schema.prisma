@@ -1,0 +1,53 @@
+// SQLite storage for the watchlist, alerts and cached AI outputs.
+// The database file lives in server/data/ (git-ignored).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/trading.db"
+}
+
+model WatchlistItem {
+  symbol  String   @id
+  addedAt DateTime @default(now())
+}
+
+/// kind: price_above | price_below | near_level | breakout
+model Alert {
+  id           String    @id @default(cuid())
+  symbol       String
+  kind         String
+  targetPrice  Float? // price alerts
+  levelKind    String? // level alerts: support | resistance
+  levelPrice   Float?
+  zoneLow      Float?
+  zoneHigh     Float?
+  levelRange   String? // chart range the level came from (1D, 1Y, ...)
+  resolution   String? // candle size used for breakout closes
+  armed        Boolean   @default(true) // near_level: armed once price is outside the 1% band
+  status       String    @default("active") // active | triggered
+  createdAt    DateTime  @default(now())
+  triggeredAt  DateTime?
+  triggerPrice Float?
+  seen         Boolean   @default(false) // user has been shown the trigger
+
+  @@index([symbol, status])
+}
+
+/// Cached AI outputs (news summaries, sentiment tags, guidance) so they survive restarts.
+model AiCache {
+  key       String   @id
+  value     String
+  storedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model Setting {
+  key   String @id
+  value String
+}

@@ -77,6 +77,8 @@ export class MarketService {
     private readonly providers: ProviderRegistry,
     private readonly cache: Cache,
     private readonly ai: AiServices,
+    /** Persistent cache for AI outputs (defaults to the regular cache). */
+    private readonly aiCache: Cache = cache,
   ) {}
 
   async search(q: string): Promise<SymbolMatch[]> {
@@ -180,7 +182,7 @@ export class MarketService {
     for (const it of items) {
       if (it.sentiment) labels.set(it.id, it.sentiment);
       else {
-        const hit = await this.cache.get<Sentiment>(`sentiment:${ai.name}:${it.id}`);
+        const hit = await this.aiCache.get<Sentiment>(`sentiment:${ai.name}:${it.id}`);
         if (hit) labels.set(it.id, hit.value);
         else todo.push(it);
       }
@@ -193,7 +195,7 @@ export class MarketService {
         const tags = await ai.tagSentiment(symbol, batch);
         for (const [j, it] of batch.entries()) {
           labels.set(it.id, tags[j]);
-          await this.cache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
+          await this.aiCache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
         }
       } catch {
         const tags = await this.ai.keyword.tagSentiment(symbol, batch);
@@ -232,7 +234,7 @@ export class MarketService {
     if (recent.length === 0) return { ...base, summary: null, summaryStatus: 'no-recent' };
 
     const sRes = await settle(
-      cached(this.cache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
+      cached(this.aiCache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
         ai.summarizeNews(symbol, quote?.name ?? null, lang, recent, quote?.changePct ?? null),
       ),
     );
@@ -298,7 +300,7 @@ export class MarketService {
     const docKey = docs.map((d) => `${d.date}:${d.url}`).join('|');
     try {
       const en = (
-        await cached(this.cache, `guidance:en:${symbol}:${docKey}`, ttl, async () => {
+        await cached(this.aiCache, `guidance:en:${symbol}:${docKey}`, ttl, async () => {
           const raw = await ai.extractGuidance!(symbol, companyName, docs);
           return raw ? finalizeGuidance(raw, docs, { source: `${p.name} · ${ai.name}`, updatedAt: new Date().toISOString() }) : null;
         })
@@ -306,7 +308,7 @@ export class MarketService {
       if (!en) return { guidance: null, status: 'error', sources };
       if (lang === 'en' || !ai.translate) return { guidance: en, status: 'ok', sources };
       const tr = await settle(
-        cached(this.cache, `guidance:${lang}:${symbol}:${docKey}`, ttl, async () => withTexts(en, await ai.translate!(guidanceTexts(en), lang))),
+        cached(this.aiCache, `guidance:${lang}:${symbol}:${docKey}`, ttl, async () => withTexts(en, await ai.translate!(guidanceTexts(en), lang))),
       );
       return { guidance: tr?.value ?? en, status: 'ok', sources };
     } catch {

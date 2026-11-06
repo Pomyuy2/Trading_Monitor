@@ -12,7 +12,11 @@ import { ProviderRegistry } from './providers/registry.js';
 import { NotFoundError, NotSupportedError, RateLimitError } from './providers/types.js';
 import { RealtimeHub } from './realtime/hub.js';
 import { MarketService } from './services/market-service.js';
-import { MemoryWatchlistStore } from './store/watchlist-store.js';
+import { z } from 'zod';
+import { AlertService } from './alerts/alert-service.js';
+import { SqliteCache } from './cache/sqlite-cache.js';
+import { db } from './store/db.js';
+import { PrismaWatchlistStore } from './store/watchlist-store.js';
 
 // trustProxy 'loopback': the Next.js dev proxy forwards the real client IP (X-Forwarded-For)
 // so the per-IP rate limit works; headers from non-local peers are ignored.
@@ -27,9 +31,17 @@ const ai = {
   keyword: new KeywordAi(),
   mock: new MockAi(),
 };
-const market = new MarketService(providers, cache, ai);
+const aiCache = new SqliteCache(db); // AI outputs survive restarts
+const market = new MarketService(providers, cache, ai, aiCache);
 const hub = new RealtimeHub(providers.for('realtime'));
-const watchlist = new MemoryWatchlistStore(['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL']);
+const watchlist = new PrismaWatchlistStore(db, ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL']);
+await watchlist.init();
+const log = { info: (m: string) => app.log.info(m), warn: (m: string) => app.log.warn(m) };
+const alerts = new AlertService(db, market, hub, log);
+providers.for('realtime').onTick((t) => alerts.handleTick(t));
+alerts.onTriggered((alert) => hub.broadcastAll({ type: 'alert', alert }));
+await alerts.init();
+void aiCache.purge().catch(() => {});
 
 await app.register(cors, { origin: allowedOrigins });
 await app.register(rateLimit, { max: env.RATE_LIMIT_PER_MIN, timeWindow: '1 minute' });
@@ -127,6 +139,48 @@ app.delete<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req,
   return watchlist.remove(s);
 });
 
+// ---------- Alerts ----------
+const levelSchema = z.object({
+  kind: z.enum(['support', 'resistance']),
+  price: z.number().positive(),
+  zoneLow: z.number().positive(),
+  zoneHigh: z.number().positive(),
+  range: z.enum(['1H', '1D', '1W', '1M', '6M', '1Y', '5Y']),
+});
+const newAlertSchema = z.discriminatedUnion('kind', [
+  z.object({ symbol: z.string(), kind: z.literal('price_above'), targetPrice: z.number().positive() }),
+  z.object({ symbol: z.string(), kind: z.literal('price_below'), targetPrice: z.number().positive() }),
+  z.object({ symbol: z.string(), kind: z.literal('near_level'), level: levelSchema }),
+  z.object({ symbol: z.string(), kind: z.literal('breakout'), level: levelSchema }),
+]);
+
+app.get<{ Querystring: { symbol?: string } }>('/api/alerts', async (req, reply) => {
+  if (req.query.symbol) {
+    const s = parseSymbol(req.query.symbol, reply);
+    if (!s) return;
+    return alerts.list(s);
+  }
+  return alerts.list();
+});
+
+app.post('/api/alerts', async (req, reply) => {
+  const parsed = newAlertSchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid alert' });
+  const symbol = normalizeSymbol(parsed.data.symbol);
+  if (!isValidSymbol(symbol)) return reply.code(400).send({ error: 'Invalid symbol' });
+  return reply.code(201).send(await alerts.create({ ...parsed.data, symbol }));
+});
+
+app.delete<{ Params: { id: string } }>('/api/alerts/:id', async (req, reply) => {
+  const ok = await alerts.remove(req.params.id);
+  return ok ? { ok: true } : reply.code(404).send({ error: 'Alert not found' });
+});
+
+app.post<{ Params: { id: string } }>('/api/alerts/:id/seen', async (req) => {
+  await alerts.markSeen(req.params.id);
+  return { ok: true };
+});
+
 // ---------- WebSocket ----------
 app.get('/ws', { websocket: true }, (socket, req) => {
   // Browsers always send Origin on WebSocket upgrades; reject other sites embedding our feed.
@@ -145,8 +199,10 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     if (closing) return;
     closing = true;
     console.error(`[server] received ${sig}, shutting down`);
+    alerts.stop();
     providers.for('realtime').unsubscribe(hub.stats.symbols);
     await app.close().catch(() => {});
+    await db.$disconnect().catch(() => {});
     process.exit(0);
   });
 }

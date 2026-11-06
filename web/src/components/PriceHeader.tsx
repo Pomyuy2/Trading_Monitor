@@ -3,7 +3,7 @@
 import type { Quote } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, addToWatchlist, useWatchlist } from '@/lib/api';
+import { ApiError, addToWatchlist, useAlerts, useWatchlist } from '@/lib/api';
 import { direction, fmtPrice, fmtTime } from '@/lib/format';
 import { useConnState } from '@/lib/live';
 import { BellIcon, CheckIcon, CompareIcon, PlusIcon, XIcon } from './icons';
@@ -70,9 +70,7 @@ export function PriceHeader({ symbol, quote, error, streaming, onRetry, compare,
 
         <div className="flex flex-wrap gap-2">
           <WatchButton symbol={symbol} />
-          <button type="button" className={btn.ghost} onClick={onAlert} disabled={!quote}>
-            <BellIcon /> {t('price.setAlert')}
-          </button>
+          <AlertButton symbol={symbol} onClick={onAlert} disabled={!quote} />
           {compare ? (
             <button type="button" className={cx(btn.ghost, 'border-compare/60')} onClick={onStopCompare}>
               <XIcon /> {t('price.stopCompare', { symbol: compare })}
@@ -150,6 +148,23 @@ function StatusBadge({ quote, streaming }: { quote: Quote; streaming: boolean })
       <span className="text-muted">·</span>
       <span className="font-mono text-muted">{t('updated', { time })}</span>
     </span>
+  );
+}
+
+function AlertButton({ symbol, onClick, disabled }: { symbol: string; onClick: () => void; disabled: boolean }) {
+  const t = useTranslations();
+  const { data } = useAlerts();
+  const n = (data ?? []).filter((a) => a.symbol === symbol && a.status === 'active').length;
+  return (
+    <button type="button" className={btn.ghost} onClick={onClick} disabled={disabled}>
+      <BellIcon /> {t('price.setAlert')}
+      {n > 0 && (
+        <span className="rounded-full bg-accent/20 px-1.5 font-mono text-xs text-accent">
+          {n}
+          <span className="sr-only"> {t('alerts.activeCount', { count: n })}</span>
+        </span>
+      )}
+    </button>
   );
 }
 
