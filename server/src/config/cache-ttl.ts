@@ -15,6 +15,7 @@ export const TTL = {
   sentiment: 7 * 24 * HOUR, // per headline; a headline's tag doesn't change
   profile: 24 * HOUR,
   estimates: 12 * HOUR,
+  events: 12 * HOUR, // earnings + dividend markers
   search: 1 * HOUR,
   guidanceDocs: 12 * HOUR, // filing list / text; guidance itself lives until the next earnings date
   guidanceFallback: 7 * 24 * HOUR, // used when the next earnings date is unknown

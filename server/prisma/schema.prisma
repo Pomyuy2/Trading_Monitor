@@ -51,3 +51,12 @@ model Setting {
   key   String @id
   value String
 }
+
+/// Web Push subscriptions (installed app / browser) for alert notifications.
+model PushSubscription {
+  endpoint  String   @id
+  p256dh    String
+  auth      String
+  lang      String   @default("en")
+  createdAt DateTime @default(now())
+}

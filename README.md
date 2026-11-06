@@ -42,7 +42,20 @@ Holds the watchlist, alerts and cached AI outputs.
 - [x] Phase 3.5: support & resistance levels + pivot points
 - [x] Phase 4: company insight (FMP profile/estimates/targets/ratings/earnings; guidance from SEC filings, extracted by Claude when `ANTHROPIC_API_KEY` is set)
 - [x] Phase 5: watchlist (SQLite/Prisma), search, price + level alerts with browser notifications
+- [x] Phase 5.5: comfort features (saved preferences, crosshair tooltip, market status bar, earnings/dividend markers, compare up to 2 + SPY, light theme, keyboard shortcuts, installable PWA with push alerts)
 - [ ] Phase 6: polish, tests, full README
+
+## Keyboard shortcuts
+
+`/` search · `1`–`7` chart range · `L` levels · `P` pivots · `C` compare · `?` help (ignored while typing).
+
+## Install as an app (PWA)
+
+- Desktop (Chrome / Edge): open http://localhost:3000 and click the install icon in the address bar.
+- Phone: installing and push notifications require **HTTPS** (browsers only allow them on secure origins or localhost).
+  Opening the app over your LAN IP (http://192.168.x.x:3000) works as a website, but cannot be installed.
+- In the installed app, price alerts also arrive as push notifications while the app is closed (the server must be running).
+  Push keys are generated automatically; set `VAPID_SUBJECT=mailto:you@example.com` in `server/.env`.
 
 ## Tests
 

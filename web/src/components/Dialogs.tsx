@@ -7,6 +7,7 @@ import { useAlertText } from '@/lib/alert-text';
 import { createAlert, deleteAlert, useAlerts, useLevels, useWatchlist } from '@/lib/api';
 import { fmtNumber, fmtPrice } from '@/lib/format';
 import { ensureNotificationPermission } from './AlertCenter';
+import { ensurePushSubscription } from '@/lib/pwa';
 import { XIcon } from './icons';
 import { btn, cx, Skeleton, useLang } from './ui';
 
@@ -120,6 +121,7 @@ export function AlertDialog({
         await createAlert({ symbol, kind: type as 'price_above' | 'price_below', targetPrice: target });
       }
       const perm = await ensureNotificationPermission();
+      if (perm === 'granted') void ensurePushSubscription(lang); // installed app: alerts also arrive via push
       if (perm === 'granted') onClose();
       else setNotice(t('savedNoNotifications'));
     } catch (e) {
@@ -174,7 +176,7 @@ export function AlertDialog({
                 {levels.map((l) => (
                   <label key={keyOf(l)} className={cx('flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-1.5 text-sm', levelKey === keyOf(l) ? 'border-accent bg-accent/10' : 'border-border')}>
                     <input type="radio" name="alert-level" checked={levelKey === keyOf(l)} onChange={() => setLevelKey(keyOf(l))} className="accent-[#4C8DFF]" />
-                    <span className={l.kind === 'support' ? 'text-accent' : 'text-[#F2994A]'}>{tl(l.kind)}</span>
+                    <span className={l.kind === 'support' ? 'text-accent' : 'text-resist'}>{tl(l.kind)}</span>
                     <span className="ml-auto font-mono">{fmtPrice(l.price, lang)}</span>
                     <span className="font-mono text-xs text-muted">{fmtNumber(l.zoneLow, lang)}–{fmtNumber(l.zoneHigh, lang)}</span>
                   </label>
@@ -230,47 +232,121 @@ export function AlertDialog({
 
 const keyOf = (l: PriceLevel) => `${l.kind}:${l.price}`;
 
-export function CompareDialog({ open, onClose, symbol, onPick }: { open: boolean; onClose: () => void; symbol: string; onPick: (s: string) => void }) {
+export function CompareDialog({
+  open,
+  onClose,
+  symbol,
+  current,
+  max,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  symbol: string;
+  current: string[];
+  max: number;
+  onPick: (s: string) => void;
+}) {
   const t = useTranslations('compare');
   const { data } = useWatchlist();
   const [custom, setCustom] = useState('');
-  const options = (data ?? []).map((i) => i.symbol).filter((s) => s !== symbol);
+  const taken = new Set([symbol, ...current]);
+  const full = current.length >= max;
+  const options = (data ?? []).map((i) => i.symbol).filter((s) => !taken.has(s) && s !== 'SPY');
   const pick = (s: string) => {
     onPick(s);
-    onClose();
     setCustom('');
+    if (current.length + 1 >= max) onClose();
   };
   const customSym = normalizeSymbol(custom);
+  const customOk = isValidSymbol(customSym) && !taken.has(customSym);
   return (
     <Modal open={open} onClose={onClose} title={t('title', { symbol })}>
-      <p className="text-xs text-muted">{t('hint')}</p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {options.map((s) => (
-          <button key={s} type="button" className={cx(btn.ghost, 'px-2 font-mono')} onClick={() => pick(s)} aria-label={t('pick', { symbol: s })}>
-            {s}
+      <p className="text-xs text-muted">{t('hint', { max })}</p>
+      <p className="mt-1 text-xs text-muted" role="status">{t('slots', { used: current.length, max })}</p>
+      {full ? (
+        <p className="mt-3 text-sm text-text">{t('full', { max })}</p>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={cx(btn.ghost, 'mt-3 w-full justify-start')}
+            onClick={() => pick('SPY')}
+            disabled={taken.has('SPY')}
+            aria-label={t('pick', { symbol: 'SPY' })}
+          >
+            <span className="font-mono font-semibold">SPY</span>
+            <span className="text-xs text-muted">{t('spy')}</span>
           </button>
+          {options.length > 0 && (
+            <>
+              <h3 className="mt-3 text-xs text-muted">{t('fromWatchlist')}</h3>
+              <div className="mt-1 grid grid-cols-3 gap-2">
+                {options.map((s) => (
+                  <button key={s} type="button" className={cx(btn.ghost, 'px-2 font-mono')} onClick={() => pick(s)} aria-label={t('pick', { symbol: s })}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <form
+            className="mt-4 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (customOk) pick(customSym);
+            }}
+          >
+            <label htmlFor="compare-sym" className="sr-only">{t('otherSymbol')}</label>
+            <input
+              id="compare-sym"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder={t('otherPlaceholder')}
+              autoComplete="off"
+              className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono uppercase text-text placeholder:normal-case placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+            <button type="submit" className={btn.primary} disabled={!customOk}>
+              {t('add')}
+            </button>
+          </form>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+const SHORTCUTS: { keys: string[]; label: string }[] = [
+  { keys: ['/'], label: 'search' },
+  { keys: ['1', '…', '7'], label: 'ranges' },
+  { keys: ['L'], label: 'levels' },
+  { keys: ['P'], label: 'pivots' },
+  { keys: ['C'], label: 'compare' },
+  { keys: ['?'], label: 'help' },
+  { keys: ['Esc'], label: 'close' },
+];
+
+export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useTranslations('shortcuts');
+  return (
+    <Modal open={open} onClose={onClose} title={t('title')}>
+      <dl className="divide-y divide-border">
+        {SHORTCUTS.map((s) => (
+          <div key={s.label} className="flex items-center justify-between gap-4 py-2">
+            <dt className="text-sm">{t(`items.${s.label}` as Parameters<typeof t>[0])}</dt>
+            <dd className="flex gap-1">
+              {s.keys.map((k, i) =>
+                k === '…' ? (
+                  <span key={i} className="text-muted">–</span>
+                ) : (
+                  <kbd key={i} className="min-w-7 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-center font-mono text-xs">{k}</kbd>
+                ),
+              )}
+            </dd>
+          </div>
         ))}
-      </div>
-      <form
-        className="mt-4 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (isValidSymbol(customSym) && customSym !== symbol) pick(customSym);
-        }}
-      >
-        <label htmlFor="compare-sym" className="sr-only">Symbol</label>
-        <input
-          id="compare-sym"
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          placeholder="e.g. AMD"
-          autoComplete="off"
-          className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono uppercase text-text placeholder:normal-case placeholder:text-muted focus:border-accent focus:outline-none"
-        />
-        <button type="submit" className={btn.primary} disabled={!isValidSymbol(customSym) || customSym === symbol}>
-          OK
-        </button>
-      </form>
+      </dl>
+      <p className="mt-3 text-xs text-muted">{t('note')}</p>
     </Modal>
   );
 }

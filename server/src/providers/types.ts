@@ -1,5 +1,7 @@
 import type {
   CandleSeries,
+  DividendEvent,
+  EarningsReport,
   EarningsEvent,
   Estimates,
   NewsItem,
@@ -62,6 +64,10 @@ export interface MarketDataProvider {
    * transcript and/or filings such as an 8-K earnings release and the 10-K. Default: the transcript.
    */
   getGuidanceDocuments(symbol: string): Promise<SourceDocument[]>;
+  /** Past and upcoming earnings reports in a date window (chart markers). */
+  getEarningsHistory(symbol: string, fromMs: number, toMs: number): Promise<EarningsReport[]>;
+  /** Dividend history (ex-dates). */
+  getDividends(symbol: string): Promise<DividendEvent[]>;
 }
 
 export type Capability =
@@ -77,7 +83,9 @@ export type Capability =
   | 'priceTargets'
   | 'ratings'
   | 'earningsCalendar'
-  | 'transcripts';
+  | 'transcripts'
+  | 'earningsHistory'
+  | 'dividends';
 
 export class NotSupportedError extends Error {
   constructor(provider: string, method: string) {
@@ -171,6 +179,12 @@ export abstract class BaseProvider implements MarketDataProvider {
   }
   async getLatestTranscript(_s: string): Promise<Transcript | null> {
     return this.unsupported('getLatestTranscript');
+  }
+  async getEarningsHistory(_s: string, _f: number, _t: number): Promise<EarningsReport[]> {
+    return this.unsupported('getEarningsHistory');
+  }
+  async getDividends(_s: string): Promise<DividendEvent[]> {
+    return this.unsupported('getDividends');
   }
   async getGuidanceDocuments(symbol: string): Promise<SourceDocument[]> {
     const t = await this.getLatestTranscript(symbol);

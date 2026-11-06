@@ -1,4 +1,4 @@
-import type { MarketState, NewsItem, Quote, SymbolMatch } from '@tm/shared';
+import type { EarningsReport, MarketState, NewsItem, Quote, SymbolMatch } from '@tm/shared';
 import { getJson } from '../lib/http.js';
 import { Memo } from '../lib/memo.js';
 import { BaseProvider, NotFoundError, type Capability } from './types.js';
@@ -19,6 +19,9 @@ interface FhQuote { c: number; d: number | null; dp: number | null; h: number; l
 interface FhProfile { name?: string; exchange?: string; currency?: string; marketCapitalization?: number; ticker?: string }
 interface FhMetric { metric?: Record<string, number | null> }
 interface FhStatus { isOpen: boolean; session: string | null; holiday: string | null }
+interface FhEarningsCal {
+  earningsCalendar?: { symbol: string; date: string; hour?: string; epsActual?: number | null; epsEstimate?: number | null; revenueActual?: number | null; revenueEstimate?: number | null }[];
+}
 interface FhNews { id: number; datetime: number; headline: string; summary?: string; source?: string; url: string }
 interface FhSearch { result: { symbol: string; description: string; displaySymbol: string; type: string }[] }
 type FhWsMessage = { type: 'trade'; data: { s: string; p: number; t: number; v: number }[] } | { type: 'ping' } | { type: 'error'; msg: string };
@@ -27,7 +30,7 @@ interface Logger { info(msg: string): void; warn(msg: string): void }
 
 export class FinnhubProvider extends BaseProvider {
   readonly name = 'Finnhub';
-  protected readonly capabilities = new Set<Capability>(['quote', 'realtime', 'search', 'news']);
+  protected readonly capabilities = new Set<Capability>(['quote', 'realtime', 'search', 'news', 'earningsHistory']);
 
   private fundamentals = new Memo<{ profile: FhProfile; metric: Record<string, number | null> }>(12 * 3600_000);
   private status = new Memo<FhStatus>(60_000);
@@ -143,6 +146,24 @@ export class FinnhubProvider extends BaseProvider {
       });
     }
     return out;
+  }
+
+  async getEarningsHistory(symbol: string, fromMs: number, toMs: number): Promise<EarningsReport[]> {
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const r = await this.get<FhEarningsCal>(`/calendar/earnings?symbol=${encodeURIComponent(symbol)}&from=${day(fromMs)}&to=${day(toMs)}`);
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const hours = ['bmo', 'amc', 'dmh'] as const;
+    return (r.earningsCalendar ?? [])
+      .filter((e) => e.symbol === symbol && e.date)
+      .map((e) => ({
+        date: e.date,
+        hour: (hours as readonly string[]).includes(e.hour ?? '') ? (e.hour as EarningsReport['hour']) : null,
+        epsActual: num(e.epsActual),
+        epsEstimate: num(e.epsEstimate),
+        revenueActual: num(e.revenueActual),
+        revenueEstimate: num(e.revenueEstimate),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   // ---------- realtime (one upstream socket) ----------

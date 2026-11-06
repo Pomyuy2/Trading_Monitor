@@ -20,5 +20,7 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
   priceTargets: 'fmp',
   ratings: 'fmp',
   earningsCalendar: 'fmp',
-  transcripts: 'sec', // free SEC filings (8-K earnings release + 10-K MD&A); FMP transcripts are paid
+  transcripts: 'sec',
+  earningsHistory: 'fmp', // last 4 reports + next (free plan: 5 rows); Finnhub's free calendar returns only ~2
+  dividends: 'fmp', // free SEC filings (8-K earnings release + 10-K MD&A); FMP transcripts are paid
 };

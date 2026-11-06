@@ -26,7 +26,9 @@
     "searching": "Searching…",
     "noResults": "No matches",
     "openWatchlist": "Open watchlist",
-    "language": "Language"
+    "language": "Language",
+    "lightTheme": "Switch to light theme",
+    "darkTheme": "Switch to dark theme"
   },
   "price": {
     "live": "Live",
@@ -40,7 +42,8 @@
     "today": "Today",
     "notFound": "Symbol not found",
     "preMarket": "Pre-market",
-    "afterHours": "After hours"
+    "afterHours": "After hours",
+    "compareFull": "Already comparing {max} symbols — remove one on the chart first"
   },
   "chart": {
     "label": "Price chart for {symbol}",
@@ -80,7 +83,25 @@
     "overlays": "Chart overlays",
     "levels": "Levels",
     "pivots": "Pivots",
-    "levelsHint": "Levels are based on past prices and do not predict future moves."
+    "levelsHint": "Levels are based on past prices and do not predict future moves.",
+    "ohlc": {
+      "open": "Open",
+      "high": "High",
+      "low": "Low",
+      "close": "Close",
+      "volume": "Volume",
+      "change": "Change"
+    },
+    "thisSymbol": "This stock",
+    "compareLegend": "Compared symbols",
+    "removeCompare": "Stop comparing {symbol}",
+    "events": {
+      "earnings": "Earnings",
+      "dividend": "Dividend",
+      "epsVs": "EPS {actual} vs est. {estimate}",
+      "epsEst": "Upcoming · EPS est. {estimate}",
+      "exDate": "Ex-dividend date {date}"
+    }
   },
   "stats": {
     "title": "Key stats",
@@ -195,13 +216,9 @@
     "savedNoNotifications": "Alert saved. Browser notifications are blocked, so it will show inside the app only. You can allow notifications in your browser’s site settings.",
     "existing": "Active alerts for this stock ({count})"
   },
-  "compare": {
-    "title": "Compare {symbol} with…",
-    "hint": "Both lines are shown as % change over the selected range.",
-    "pick": "Compare with {symbol}"
-  },
   "footer": {
-    "disclaimer": "Data from {providers}. May be delayed. Not investment advice."
+    "disclaimer": "Data from {providers}. May be delayed. Not investment advice.",
+    "shortcuts": "Keyboard shortcuts"
   },
   "levels": {
     "title": "Key levels",
@@ -245,6 +262,53 @@
       "near_level": "price within {pct}% of {kind} {price} ({range})",
       "breakout_up": "a {size} candle closes above the {kind} zone {zone}",
       "breakout_down": "a {size} candle closes below the {kind} zone {zone}"
+    }
+  },
+  "compare": {
+    "title": "Compare {symbol} with…",
+    "hint": "Add up to {max} symbols. All lines show % change over the selected range.",
+    "slots": "{used} of {max} added",
+    "full": "You are comparing {max} symbols. Remove one with its × on the chart to add another.",
+    "spy": "S&P 500 ETF (market benchmark)",
+    "fromWatchlist": "From your watchlist",
+    "pick": "Compare with {symbol}",
+    "otherSymbol": "Other symbol",
+    "otherPlaceholder": "Any ticker, e.g. AMD",
+    "add": "Add"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "items": {
+      "search": "Search",
+      "ranges": "Chart range 1H … 5Y",
+      "levels": "Show / hide levels",
+      "pivots": "Show / hide pivots",
+      "compare": "Compare",
+      "help": "This help",
+      "close": "Close a dialog"
+    },
+    "note": "Shortcuts are ignored while you are typing in a text field."
+  },
+  "status": {
+    "label": "US market",
+    "open": "Open · closes in {in} ({time})",
+    "pre": "Pre-market · opens in {in} ({time})",
+    "post": "After-hours · ends in {in} · next open {next}",
+    "closed": "Closed · opens in {in} ({time})",
+    "earlyClose": "Early close today (1:00 pm ET)",
+    "holiday": "Holiday: {name}",
+    "yourTime": "Times in your time zone ({tz})",
+    "holidays": {
+      "newYear": "New Year's Day",
+      "mlk": "Martin Luther King Jr. Day",
+      "presidents": "Presidents' Day",
+      "goodFriday": "Good Friday",
+      "memorial": "Memorial Day",
+      "juneteenth": "Juneteenth",
+      "independence": "Independence Day",
+      "labor": "Labor Day",
+      "thanksgiving": "Thanksgiving",
+      "christmas": "Christmas"
     }
   }
 }

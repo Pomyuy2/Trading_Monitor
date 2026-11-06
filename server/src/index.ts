@@ -17,6 +17,7 @@ import { AlertService } from './alerts/alert-service.js';
 import { SqliteCache } from './cache/sqlite-cache.js';
 import { db } from './store/db.js';
 import { PrismaWatchlistStore } from './store/watchlist-store.js';
+import { PushService } from './push/push-service.js';
 
 // trustProxy 'loopback': the Next.js dev proxy forwards the real client IP (X-Forwarded-For)
 // so the per-IP rate limit works; headers from non-local peers are ignored.
@@ -39,7 +40,12 @@ await watchlist.init();
 const log = { info: (m: string) => app.log.info(m), warn: (m: string) => app.log.warn(m) };
 const alerts = new AlertService(db, market, hub, log);
 providers.for('realtime').onTick((t) => alerts.handleTick(t));
-alerts.onTriggered((alert) => hub.broadcastAll({ type: 'alert', alert }));
+const push = new PushService(db, env.VAPID_SUBJECT, log);
+await push.init();
+alerts.onTriggered((alert) => {
+  hub.broadcastAll({ type: 'alert', alert });
+  void push.sendAlert(alert);
+});
 await alerts.init();
 void aiCache.purge().catch(() => {});
 
@@ -112,6 +118,12 @@ app.get<{ Params: { symbol: string }; Querystring: { range?: string } }>('/api/l
   return market.levels(s, range);
 });
 
+app.get<{ Params: { symbol: string } }>('/api/events/:symbol', async (req, reply) => {
+  const s = parseSymbol(req.params.symbol, reply);
+  if (!s) return;
+  return market.events(s);
+});
+
 app.get<{ Params: { symbol: string }; Querystring: { lang?: string } }>('/api/news/:symbol', async (req, reply) => {
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;
@@ -178,6 +190,27 @@ app.delete<{ Params: { id: string } }>('/api/alerts/:id', async (req, reply) => 
 
 app.post<{ Params: { id: string } }>('/api/alerts/:id/seen', async (req) => {
   await alerts.markSeen(req.params.id);
+  return { ok: true };
+});
+
+// ---------- Push (installed app) ----------
+app.get('/api/push/key', async () => ({ publicKey: push.publicKey }));
+
+const pushSubSchema = z.object({
+  endpoint: z.string().url().max(2000),
+  keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
+  lang: z.enum(['en', 'th']).optional(),
+});
+app.post('/api/push/subscribe', async (req, reply) => {
+  const parsed = pushSubSchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid subscription' });
+  await push.subscribe(parsed.data);
+  return { ok: true };
+});
+app.post('/api/push/unsubscribe', async (req, reply) => {
+  const parsed = z.object({ endpoint: z.string().max(2000) }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' });
+  await push.unsubscribe(parsed.data.endpoint);
   return { ok: true };
 });
 

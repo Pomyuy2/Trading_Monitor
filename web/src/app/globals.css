@@ -13,15 +13,58 @@
   --color-up: #3ddc97;
   --color-down: #ff7b7b;
   --color-warn: #f5c45e;
+  --color-resist: #f2994a;
   --color-compare: #f5c45e;
+  --color-compare-2: #c4a1ff;
 
   --font-sans: var(--font-inter), var(--font-thai), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), var(--font-thai), ui-monospace, monospace;
 }
 
+/* Chart-only colors (read by the chart at runtime). */
+:root {
+  --chart-grid: #1c222c;
+  --chart-area-top: rgba(76, 141, 255, 0.28);
+  --chart-area-bottom: rgba(76, 141, 255, 0.02);
+  --chart-support-rgb: 76, 141, 255;
+  --chart-resist-rgb: 242, 153, 74;
+  --chart-vol-up: rgba(61, 220, 151, 0.35);
+  --chart-vol-down: rgba(255, 123, 123, 0.35);
+}
+
+/* Light theme. Every text color here is ≥ 4.5:1 on bg, panel and panel-2 (checked by script). */
+:root[data-theme='light'] {
+  --color-bg: #f4f6f9;
+  --color-panel: #ffffff;
+  --color-panel-2: #eef1f5;
+  --color-border: #d6dce4;
+  --color-text: #10161f;
+  --color-muted: #4f5b6a;
+  --color-accent: #1f5fd0;
+  --color-button: #2b5bc4;
+  --color-button-hover: #234da8;
+  --color-up: #0e7a4c;
+  --color-down: #c22f2f;
+  --color-warn: #8a5300;
+  --color-resist: #a64b06;
+  --color-compare: #b07300;
+  --color-compare-2: #7b3fd1;
+
+  --chart-grid: #e8ecf1;
+  --chart-area-top: rgba(31, 95, 208, 0.22);
+  --chart-area-bottom: rgba(31, 95, 208, 0.02);
+  --chart-support-rgb: 31, 95, 208;
+  --chart-resist-rgb: 230, 126, 34;
+  --chart-vol-up: rgba(14, 122, 76, 0.3);
+  --chart-vol-down: rgba(194, 47, 47, 0.3);
+}
+
 html {
   color-scheme: dark;
   background: var(--color-bg);
+}
+html[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {

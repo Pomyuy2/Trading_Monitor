@@ -3,6 +3,8 @@ import {
   RANGE_SECONDS,
   type Candle,
   type CandleSeries,
+  type DividendEvent,
+  type EarningsReport,
   type EarningsEvent,
   type Estimates,
   type Person,
@@ -38,11 +40,13 @@ interface FmpEstimate { date: string; revenueAvg?: number; epsAvg?: number; numA
 interface FmpTargets { targetHigh?: number; targetLow?: number; targetConsensus?: number }
 interface FmpGrades { strongBuy?: number; buy?: number; hold?: number; sell?: number; strongSell?: number }
 interface FmpEarnings { date: string; epsActual?: number | null }
+interface FmpEarningsRow { date: string; epsActual?: number | null; epsEstimated?: number | null; revenueActual?: number | null; revenueEstimated?: number | null }
+interface FmpDividend { date: string; dividend?: number; paymentDate?: string }
 interface FmpQuote { symbol: string; volume?: number; open?: number; dayHigh?: number; dayLow?: number; previousClose?: number; marketCap?: number; yearHigh?: number; yearLow?: number }
 
 export class FmpProvider extends BaseProvider {
   readonly name = 'FMP';
-  protected readonly capabilities = new Set<Capability>(['dailyCandles', 'keyStats', 'profile', 'estimates', 'priceTargets', 'ratings', 'earningsCalendar']);
+  protected readonly capabilities = new Set<Capability>(['dailyCandles', 'keyStats', 'profile', 'estimates', 'priceTargets', 'ratings', 'earningsCalendar', 'dividends', 'earningsHistory']);
 
   private eod = new Memo<Candle[]>(3600_000);
 
@@ -171,6 +175,32 @@ export class FmpProvider extends BaseProvider {
       .filter((r) => r.date >= today && r.epsActual == null)
       .sort((a, b) => a.date.localeCompare(b.date))[0];
     return { date: next?.date ?? null, meta: this.meta(next ? undefined : 'No upcoming date from source') };
+  }
+
+  /** Free plan: at most 5 rows = the next report + the last 4 (with EPS actual vs estimate). */
+  async getEarningsHistory(symbol: string, fromMs: number, toMs: number): Promise<EarningsReport[]> {
+    const rows = await this.get<FmpEarningsRow[]>(`/earnings?symbol=${encodeURIComponent(symbol)}&limit=5`);
+    const from = new Date(fromMs).toISOString().slice(0, 10);
+    const to = new Date(toMs).toISOString().slice(0, 10);
+    return (Array.isArray(rows) ? rows : [])
+      .filter((r) => r.date >= from && r.date <= to)
+      .map((r) => ({
+        date: r.date,
+        hour: null,
+        epsActual: r.epsActual ?? null,
+        epsEstimate: r.epsEstimated ?? null,
+        revenueActual: r.revenueActual ?? null,
+        revenueEstimate: r.revenueEstimated ?? null,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getDividends(symbol: string): Promise<DividendEvent[]> {
+    const rows = await this.get<FmpDividend[]>(`/dividends?symbol=${encodeURIComponent(symbol)}`);
+    return (Array.isArray(rows) ? rows : [])
+      .filter((r) => r.date && typeof r.dividend === 'number' && r.dividend > 0)
+      .map((r) => ({ exDate: r.date, amount: r.dividend!, paymentDate: r.paymentDate || null }))
+      .sort((a, b) => a.exDate.localeCompare(b.exDate));
   }
 
   async getKeyStats(symbol: string): Promise<KeyStats> {

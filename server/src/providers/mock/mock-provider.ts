@@ -5,6 +5,8 @@ import {
   RESOLUTION_SECONDS,
   type Candle,
   type CandleSeries,
+  type DividendEvent,
+  type EarningsReport,
   type EarningsEvent,
   type Estimates,
   type Guidance,
@@ -73,7 +75,7 @@ export class MockProvider extends BaseProvider {
   readonly name = 'Mock';
   protected readonly capabilities = new Set<Capability>([
     'search', 'quote', 'intradayCandles', 'dailyCandles', 'keyStats', 'realtime', 'profile', 'news',
-    'estimates', 'priceTargets', 'ratings', 'earningsCalendar', 'transcripts',
+    'estimates', 'priceTargets', 'ratings', 'earningsCalendar', 'transcripts', 'earningsHistory', 'dividends',
   ]);
   private states = new Map<string, SymbolState>();
   private subscribed = new Set<string>();
@@ -321,6 +323,41 @@ export class MockProvider extends BaseProvider {
   async getEarningsCalendar(symbol: string): Promise<EarningsEvent> {
     const d = this.company(symbol).nextEarnings;
     return { date: d, meta: this.meta(d ? undefined : 'No upcoming date from source') };
+  }
+
+  /** Fake quarterly earnings: every ~91 days back from the fixture's next date. */
+  async getEarningsHistory(symbol: string, fromMs: number, toMs: number): Promise<EarningsReport[]> {
+    const c = this.company(symbol);
+    if (!c.nextEarnings) return [];
+    const rand = mulberry32(hash(`${symbol}:earnings`));
+    const out: EarningsReport[] = [];
+    let t = Date.parse(`${c.nextEarnings}T00:00:00Z`);
+    for (let i = 0; i < 24 && t >= fromMs; i++, t -= 91 * 86400_000) {
+      if (t > toMs) continue;
+      const future = t > Date.now();
+      const est = Math.round(((c.estimates?.epsAvg ?? 2) / 4) * (0.85 + rand() * 0.3) * 100) / 100;
+      out.push({
+        date: new Date(t).toISOString().slice(0, 10),
+        hour: 'amc',
+        epsEstimate: est,
+        epsActual: future ? null : Math.round(est * (0.9 + rand() * 0.25) * 100) / 100,
+        revenueActual: null,
+        revenueEstimate: null,
+      });
+    }
+    return out.reverse();
+  }
+
+  async getDividends(symbol: string): Promise<DividendEvent[]> {
+    const c = this.company(symbol);
+    if (!c.dividendYield) return [];
+    const perQuarter = Math.round(((c.price * c.dividendYield) / 100 / 4) * 100) / 100;
+    const out: DividendEvent[] = [];
+    for (let i = 1; i <= 20; i++) {
+      const t = Date.now() - (i * 91 - 30) * 86400_000;
+      out.push({ exDate: new Date(t).toISOString().slice(0, 10), amount: perQuarter, paymentDate: new Date(t + 7 * 86400_000).toISOString().slice(0, 10) });
+    }
+    return out.reverse();
   }
 
   async getLatestTranscript(_symbol: string): Promise<Transcript | null> {

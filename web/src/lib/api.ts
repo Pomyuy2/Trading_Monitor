@@ -3,6 +3,7 @@
 import type {
   Alert,
   CandleSeries,
+  EventsResponse,
   NewAlert,
   InsightResponse,
   Lang,
@@ -64,6 +65,10 @@ export function useLevels(symbol: string | null, range: Range) {
     keepPreviousData: true,
     ...noRetryOn404,
   });
+}
+
+export function useEvents(symbol: string) {
+  return useSWR<EventsResponse>(`/api/events/${enc(symbol)}`, fetchJson, { revalidateOnFocus: false, ...noRetryOn404 });
 }
 
 export function useNews(symbol: string, lang: Lang) {

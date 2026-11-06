@@ -8,8 +8,8 @@ import { fmtDate, fmtIsoDate, fmtNumber, fmtPrice, fmtSignedPct } from '@/lib/fo
 import { BellIcon } from './icons';
 import { Card, cx, ErrorState, Missing, Skeleton, SourceLine, useLang } from './ui';
 
-const KIND_TEXT = { support: 'text-accent', resistance: 'text-[#F2994A]' } as const;
-const KIND_BAR = { support: 'bg-accent', resistance: 'bg-[#F2994A]' } as const;
+const KIND_TEXT = { support: 'text-accent', resistance: 'text-resist' } as const;
+const KIND_BAR = { support: 'bg-accent', resistance: 'bg-resist' } as const;
 const DOTS: Record<LevelStrength, number> = { weak: 1, medium: 2, strong: 3 };
 
 /** Nearest supports / resistances for the selected range. Descriptive only — no buy/sell wording. */

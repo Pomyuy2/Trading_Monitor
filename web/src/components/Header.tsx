@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useSearch } from '@/lib/api';
-import { LOCALE_COOKIE } from '@/i18n/config';
-import { ListIcon, LogoIcon, SearchIcon } from './icons';
+import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
+import { ListIcon, LogoIcon, MoonIcon, SearchIcon, SunIcon } from './icons';
 import { btn, cx, useLang } from './ui';
 
 export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
@@ -17,7 +17,7 @@ export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
         <button type="button" className={cx(btn.icon, 'lg:hidden')} onClick={onOpenWatchlist} aria-label={t('header.openWatchlist')}>
           <ListIcon />
         </button>
-        <Link href="/" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-md font-semibold text-text">
+        <Link href="/" className="hidden min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-md font-semibold text-text min-[420px]:flex">
           <span className="grid size-8 place-items-center rounded-md bg-button text-white">
             <LogoIcon width={18} height={18} />
           </span>
@@ -26,9 +26,34 @@ export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
         <div className="min-w-0 flex-1">
           <SearchBox />
         </div>
-        <LanguageSwitch />
+        <div className="flex shrink-0 items-center gap-1">
+          <ThemeToggle />
+          <LanguageSwitch />
+        </div>
       </div>
     </header>
+  );
+}
+
+function ThemeToggle() {
+  const t = useTranslations('header');
+  const theme = useTheme();
+  // If the theme cookie was cleared, restore it from localStorage.
+  useEffect(() => {
+    const saved = loadPref('theme') as Theme | null;
+    if (saved && saved !== document.documentElement.dataset.theme) setTheme(saved);
+  }, []);
+  const next: Theme = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      aria-label={t(next === 'light' ? 'lightTheme' : 'darkTheme')}
+      title={t(next === 'light' ? 'lightTheme' : 'darkTheme')}
+      className={btn.icon}
+    >
+      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+    </button>
   );
 }
 
@@ -37,10 +62,13 @@ function LanguageSwitch() {
   const lang = useLang();
   const router = useRouter();
   const [pending, start] = useTransition();
+  useEffect(() => {
+    if (restoreCookie('lang')) start(() => router.refresh());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (l: 'en' | 'th') => {
     if (l === lang) return;
-    document.cookie = `${LOCALE_COOKIE}=${l}; path=/; max-age=31536000; samesite=lax`;
+    savePref('lang', l); // NEXT_LOCALE cookie + localStorage
     start(() => router.refresh());
   };
 
@@ -68,8 +96,9 @@ function LanguageSwitch() {
 function SearchBox() {
   const t = useTranslations('header');
   const router = useRouter();
-  const id = useId();
-  const listId = `${id}-list`;
+  const id = 'global-search'; // "/" shortcut focuses it
+  const uid = useId();
+  const listId = `${uid}-list`;
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
@@ -144,8 +173,10 @@ function SearchBox() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
-        className="h-11 w-full rounded-md border border-border bg-panel pl-10 pr-3 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+        aria-keyshortcuts="/"
+        className="h-11 w-full rounded-md border border-border bg-panel pl-10 pr-10 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
       />
+      <kbd aria-hidden className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-border px-1.5 font-mono text-xs text-muted sm:block">/</kbd>
       {showList && (
         <ul id={listId} role="listbox" aria-label={t('searchLabel')} className="absolute inset-x-0 top-12 z-40 max-h-80 overflow-auto rounded-md border border-border bg-panel py-1 shadow-2xl">
           {results.length === 0 && (

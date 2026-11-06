@@ -15,13 +15,13 @@ interface Props {
   error: unknown;
   streaming: boolean;
   onRetry: () => void;
-  compare: string | null;
+  compareCount: number;
+  maxCompares: number;
   onAlert: () => void;
   onCompare: () => void;
-  onStopCompare: () => void;
 }
 
-export function PriceHeader({ symbol, quote, error, streaming, onRetry, compare, onAlert, onCompare, onStopCompare }: Props) {
+export function PriceHeader({ symbol, quote, error, streaming, onRetry, compareCount, maxCompares, onAlert, onCompare }: Props) {
   const t = useTranslations();
   const lang = useLang();
 
@@ -71,15 +71,17 @@ export function PriceHeader({ symbol, quote, error, streaming, onRetry, compare,
         <div className="flex flex-wrap gap-2">
           <WatchButton symbol={symbol} />
           <AlertButton symbol={symbol} onClick={onAlert} disabled={!quote} />
-          {compare ? (
-            <button type="button" className={cx(btn.ghost, 'border-compare/60')} onClick={onStopCompare}>
-              <XIcon /> {t('price.stopCompare', { symbol: compare })}
-            </button>
-          ) : (
-            <button type="button" className={btn.primary} onClick={onCompare} disabled={!quote}>
-              <CompareIcon /> {t('price.compare')}
-            </button>
-          )}
+          <button
+            type="button"
+            className={btn.primary}
+            onClick={onCompare}
+            disabled={!quote || compareCount >= maxCompares}
+            aria-keyshortcuts="C"
+            title={compareCount >= maxCompares ? t('price.compareFull', { max: maxCompares }) : `${t('price.compare')} (C)`}
+          >
+            <CompareIcon /> {t('price.compare')}
+            {compareCount > 0 && <span className="rounded-full bg-white/20 px-1.5 font-mono text-xs">{compareCount}/{maxCompares}</span>}
+          </button>
         </div>
       </div>
       {quote && (

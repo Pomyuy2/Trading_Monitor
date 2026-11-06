@@ -144,6 +144,15 @@ Handle these states:
 4. **Company insight**: profile, estimates, price targets, ratings, guidance extraction with sources.
 5. **Watchlist, search, price alerts.** Alerts are checked on the server; a browser notification fires when one triggers.
    - Level alerts (from Phase 3.5): "price within 1% of a support/resistance level" and "breakout" (price closes beyond a level's zone).
+5.5. **Comfort features:**
+   1. Remember preferences in localStorage + cookie: last symbol, chart range, Levels/Pivots toggles, language, theme. Restore them on load.
+   2. Chart crosshair tooltip: date/time, O/H/L/C, volume, % change from previous candle. On touch: press-and-hold. Translated EN/TH.
+   3. Market status bar under the header: "Open · closes in 2h 15m" / "Closed · opens in 5h 40m" / "Pre-market" / "After-hours", with times in the user's local timezone. Handle US holidays and daylight saving time.
+   4. Event markers on the chart: earnings dates (E) and dividends (D). Hover shows details (EPS actual vs estimate, dividend amount).
+   5. Compare mode: the Compare button adds up to 2 symbols or SPY as % change lines on the same chart, each with a different color and a legend. Remove with an X.
+   6. Light theme toggle next to EN/TH, with matching chart colors. Keep text contrast at 4.5:1 or more in both themes.
+   7. Keyboard shortcuts: "/" search, 1–7 chart ranges, L levels, P pivots, C compare, "?" shows a shortcut help panel. Ignore shortcuts while typing in an input.
+   8. PWA: manifest, icons, installable on phone and desktop. Price alerts use push notifications when the app is installed.
 6. **Polish:**
    - Loading skeletons and error states.
    - Unit tests for the provider adapters, range mapping and the guidance JSON schema.

@@ -4,6 +4,7 @@ import {
   type Guidance,
   type GuidanceStatus,
   type InsightResponse,
+  type EventsResponse,
   type Lang,
   type LevelsResponse,
   type NewsItem,
@@ -164,6 +165,26 @@ export class MarketService {
     const prev = done[done.length - 1];
     if (!prev) return null;
     return { ...classicPivots(prev.high, prev.low, prev.close), sessionDate: dateOf(prev.time), meta: { ...daily.meta } };
+  }
+
+  /** Earnings + dividend markers for the chart (5 years back, ~3 months ahead). */
+  async events(symbol: string): Promise<EventsResponse> {
+    const now = Date.now();
+    const ep = this.providers.for('earningsHistory');
+    const dp = this.providers.for('dividends');
+    const [earnings, dividends] = await Promise.all([
+      settle(cached(this.cache, `events:earnings:${ep.name}:${symbol}`, TTL.events, () => withRateLimitRetry(() => ep.getEarningsHistory(symbol, now - 5 * 366 * 86400_000, now + 100 * 86400_000)))),
+      settle(cached(this.cache, `events:dividends:${dp.name}:${symbol}`, TTL.events, () => withRateLimitRetry(() => dp.getDividends(symbol)))),
+    ]);
+    const cutoff = new Date(now - 5 * 366 * 86400_000).toISOString().slice(0, 10);
+    const meta = (r: { storedAt: number; stale: boolean } | null, source: string): SourceMeta | null =>
+      r ? { source, updatedAt: new Date(r.storedAt).toISOString(), ...(r.stale ? { stale: true } : {}) } : null;
+    return {
+      symbol,
+      earnings: earnings?.value ?? [],
+      dividends: (dividends?.value ?? []).filter((d) => d.exDate >= cutoff),
+      meta: { earnings: meta(earnings, ep.name), dividends: meta(dividends, dp.name) },
+    };
   }
 
   /** Real headlines get Claude (if a key is set) or keyword rules; mock headlines get the mock AI. */

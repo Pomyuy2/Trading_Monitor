@@ -249,6 +249,29 @@ export interface InsightResponse {
   earnings: EarningsEvent | null;
 }
 
+// ---- Chart events ----
+export interface EarningsReport {
+  date: string; // YYYY-MM-DD
+  hour: 'bmo' | 'amc' | 'dmh' | null; // before open / after close / during market hours
+  epsActual: number | null;
+  epsEstimate: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+}
+
+export interface DividendEvent {
+  exDate: string; // YYYY-MM-DD
+  amount: number;
+  paymentDate: string | null;
+}
+
+export interface EventsResponse {
+  symbol: string;
+  earnings: EarningsReport[];
+  dividends: DividendEvent[];
+  meta: { earnings: SourceMeta | null; dividends: SourceMeta | null };
+}
+
 // ---- Support & resistance ----
 export type LevelStrength = 'weak' | 'medium' | 'strong';
 
@@ -343,3 +366,4 @@ export function normalizeSymbol(s: string): string {
 export function isValidSymbol(s: string): boolean {
   return /^[A-Z0-9.\-^=]{1,15}$/.test(s);
 }
+export * from './market-hours';
