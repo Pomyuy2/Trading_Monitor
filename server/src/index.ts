@@ -3,6 +3,8 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse } from '@tm/shared';
 import Fastify, { type FastifyReply } from 'fastify';
+import { AnthropicAi } from './ai/anthropic-ai.js';
+import { KeywordAi } from './ai/keyword-ai.js';
 import { MockAi } from './ai/mock-ai.js';
 import { LruCache } from './cache/cache.js';
 import { env } from './env.js';
@@ -19,7 +21,12 @@ const allowedOrigins = env.WEB_ORIGIN.split(',').map((s) => s.trim());
 
 const providers = new ProviderRegistry({ info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) });
 const cache = new LruCache(5000);
-const ai = new MockAi(); // Phase 3: AnthropicAi when ANTHROPIC_API_KEY is set
+// AI: Claude when ANTHROPIC_API_KEY is set; otherwise keyword-rule sentiment and no summaries.
+const ai = {
+  claude: env.ANTHROPIC_API_KEY ? new AnthropicAi(env.ANTHROPIC_API_KEY, { warn: (m: string) => app.log.warn(m) }) : null,
+  keyword: new KeywordAi(),
+  mock: new MockAi(),
+};
 const market = new MarketService(providers, cache, ai);
 const hub = new RealtimeHub(providers.for('realtime'));
 const watchlist = new MemoryWatchlistStore(['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL']);
@@ -60,7 +67,7 @@ app.setErrorHandler((err, _req, reply) => {
 app.get('/api/health', async () => ({ ok: true, realtime: hub.stats }));
 
 app.get('/api/meta', async (): Promise<MetaResponse> => ({
-  providers: [...providers.activeNames(), ai.name],
+  providers: [...providers.activeNames(), ...(ai.claude ? [ai.claude.name] : [])],
   mock: providers.mockCapabilities().length > 0,
   mockCapabilities: providers.mockCapabilities(),
 }));
@@ -145,3 +152,4 @@ process.on('unhandledRejection', (err) => console.error('[server] unhandled reje
 
 await app.listen({ port: env.PORT, host: env.HOST });
 app.log.info(`Provider routing: ${JSON.stringify(providers.routing())}`);
+app.log.info(`AI: ${ai.claude ? ai.claude.name : 'off (no ANTHROPIC_API_KEY) - keyword sentiment, no summaries'}`);

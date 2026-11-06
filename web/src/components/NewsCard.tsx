@@ -16,7 +16,22 @@ export function NewsCard({ symbol }: { symbol: string }) {
   const now = useNow(60_000);
 
   return (
-    <Card id="news" title={t('title')} className="h-full" bodyClassName="min-h-0 xl:overflow-y-auto" footer={<SourceLine meta={data?.meta} />}>
+    <Card
+      id="news"
+      title={t('title')}
+      className="h-full"
+      bodyClassName="min-h-0 xl:overflow-y-auto"
+      footer={
+        <div className="space-y-1">
+          <SourceLine meta={data?.meta} />
+          {data?.sentimentMethod && (
+            <p className="text-xs text-muted">
+              {data.sentimentMethod === 'keywords' ? t('sentimentKeywords') : t('sentimentBy', { source: data.sentimentSource ?? '' })}
+            </p>
+          )}
+        </div>
+      }
+    >
       {error && !data ? (
         <ErrorState onRetry={() => mutate()} />
       ) : isLoading || !data ? (
@@ -43,7 +58,9 @@ export function NewsCard({ symbol }: { symbol: string }) {
                 <p className="mt-1 text-[11px] text-muted">{t('aiDisclaimer')}</p>
               </>
             ) : (
-              <p className="mt-2 text-sm text-muted">— {t('noSummary')}</p>
+              <p className="mt-2 text-sm text-muted">
+                — {t(data.summaryStatus === 'disabled' ? 'summaryOff' : data.summaryStatus === 'no-recent' ? 'summaryNoRecent' : 'noSummary')}
+              </p>
             )}
           </div>
 

@@ -1,16 +1,15 @@
 import type { Lang, NewsItem, Sentiment } from '@tm/shared';
 import { COMPANIES, GENERIC_TOPICS } from '../providers/mock/fixtures.js';
 import type { AiService, SummaryResult } from './ai-service.js';
+import { keywordSentiment } from './keyword-ai.js';
 
-/** Template-based stand-in so the UI works without an Anthropic key. Clearly labelled "Mock AI". */
+/** Canned outputs for MockProvider's fake news only (never used on real headlines). Labelled "Mock AI". */
 export class MockAi implements AiService {
   readonly name = 'Mock AI';
+  readonly sentimentMethod = 'mock' as const;
+  readonly canSummarize = true;
 
-  isAvailable() {
-    return true;
-  }
-
-  async summarizeNews(symbol: string, lang: Lang, items: NewsItem[], changePct: number | null): Promise<SummaryResult> {
+  async summarizeNews(symbol: string, _companyName: string | null, lang: Lang, items: NewsItem[], changePct: number | null): Promise<SummaryResult> {
     const c = COMPANIES.find((x) => x.symbol === symbol);
     const topics = c?.summaryTopics ?? GENERIC_TOPICS;
     const name = c?.name ?? symbol;
@@ -22,9 +21,7 @@ export class MockAi implements AiService {
     return { text, articleCount: items.length, source: this.name };
   }
 
-  async tagSentiment(items: NewsItem[]): Promise<Sentiment[]> {
-    const pos = /(rise|jump|record|beat|tops|lift|expand|gain|strong)/i;
-    const neg = /(slide|fall|miss|probe|cut|risk|dip|slip|warn|scrutiny|review|uncertain)/i;
-    return items.map((i) => i.sentiment ?? (pos.test(i.headline) ? 'positive' : neg.test(i.headline) ? 'negative' : 'neutral'));
+  async tagSentiment(_symbol: string, items: NewsItem[]): Promise<Sentiment[]> {
+    return items.map((i) => i.sentiment ?? keywordSentiment(i.headline));
   }
 }

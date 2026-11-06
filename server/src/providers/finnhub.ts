@@ -1,4 +1,4 @@
-import type { MarketState, Quote, SymbolMatch } from '@tm/shared';
+import type { MarketState, NewsItem, Quote, SymbolMatch } from '@tm/shared';
 import { getJson } from '../lib/http.js';
 import { Memo } from '../lib/memo.js';
 import { BaseProvider, NotFoundError, type Capability } from './types.js';
@@ -6,7 +6,7 @@ import { BaseProvider, NotFoundError, type Capability } from './types.js';
 /**
  * Finnhub (https://finnhub.io): live trades over WebSocket, quotes, market
  * status, key stats (metric endpoint), symbol search.
- * TODO(Phase 3): company news. TODO(Phase 4): company profile.
+ * company news. TODO(Phase 4): company profile.
  *
  * Free plan notes: 60 REST calls/min, 1 WebSocket connection per key, up to
  * 50 symbols per socket. /stock/executive and /stock/candle are paid.
@@ -19,6 +19,7 @@ interface FhQuote { c: number; d: number | null; dp: number | null; h: number; l
 interface FhProfile { name?: string; exchange?: string; currency?: string; marketCapitalization?: number; ticker?: string }
 interface FhMetric { metric?: Record<string, number | null> }
 interface FhStatus { isOpen: boolean; session: string | null; holiday: string | null }
+interface FhNews { id: number; datetime: number; headline: string; summary?: string; source?: string; url: string }
 interface FhSearch { result: { symbol: string; description: string; displaySymbol: string; type: string }[] }
 type FhWsMessage = { type: 'trade'; data: { s: string; p: number; t: number; v: number }[] } | { type: 'ping' } | { type: 'error'; msg: string };
 
@@ -26,7 +27,7 @@ interface Logger { info(msg: string): void; warn(msg: string): void }
 
 export class FinnhubProvider extends BaseProvider {
   readonly name = 'Finnhub';
-  protected readonly capabilities = new Set<Capability>(['quote', 'realtime', 'search']);
+  protected readonly capabilities = new Set<Capability>(['quote', 'realtime', 'search', 'news']);
 
   private fundamentals = new Memo<{ profile: FhProfile; metric: Record<string, number | null> }>(12 * 3600_000);
   private status = new Memo<FhStatus>(60_000);
@@ -117,6 +118,31 @@ export class FinnhubProvider extends BaseProvider {
       .filter((x) => x.type === 'Common Stock' || x.type === 'ETP' || x.type === 'ADR')
       .slice(0, 10)
       .map((x) => ({ symbol: x.symbol, name: x.description, exchange: 'US', type: x.type }));
+  }
+
+  async getNews(symbol: string, fromMs: number, toMs: number): Promise<NewsItem[]> {
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const rows = await this.get<FhNews[]>(`/company-news?symbol=${encodeURIComponent(symbol)}&from=${day(fromMs)}&to=${day(toMs)}`);
+    if (!Array.isArray(rows)) return [];
+    const seen = new Set<string>();
+    const out: NewsItem[] = [];
+    for (const r of rows.sort((a, b) => b.datetime - a.datetime)) {
+      const ms = r.datetime * 1000;
+      if (ms < fromMs || ms > toMs || !r.headline || !r.url) continue;
+      const key = r.headline.trim().toLowerCase();
+      if (seen.has(key)) continue; // same story syndicated by several outlets
+      seen.add(key);
+      out.push({
+        id: `fh-${r.id}`,
+        headline: r.headline.trim(),
+        snippet: (r.summary ?? '').trim().slice(0, 400),
+        source: r.source || 'Unknown',
+        url: r.url,
+        publishedAt: new Date(ms).toISOString(),
+        sentiment: null,
+      });
+    }
+    return out;
   }
 
   // ---------- realtime (one upstream socket) ----------

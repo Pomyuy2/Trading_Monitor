@@ -136,11 +136,20 @@ export interface NewsSummary {
   meta: SourceMeta;
 }
 
+/** Why there is (or isn't) a summary. */
+export type SummaryStatus = 'ok' | 'disabled' | 'no-recent' | 'error';
+/** How sentiment tags were produced. */
+export type SentimentMethod = 'ai' | 'keywords' | 'mock';
+
 export interface NewsResponse {
   symbol: string;
   lang: Lang;
   summary: NewsSummary | null;
+  summaryStatus: SummaryStatus;
+  /** Headlines + snippets are from the provider, in their original language. */
   items: NewsItem[];
+  sentimentMethod: SentimentMethod | null;
+  sentimentSource: string | null;
   meta: SourceMeta;
 }
 

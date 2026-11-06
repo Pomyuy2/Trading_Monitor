@@ -98,8 +98,12 @@
     "negative": "Negative",
     "neutral": "Neutral",
     "noNews": "No news in the last 24 hours",
-    "noSummary": "No AI summary available",
-    "aiDisclaimer": "AI-generated from headlines. May contain errors."
+    "noSummary": "AI summary is unavailable right now.",
+    "aiDisclaimer": "AI-generated from headlines. May contain errors.",
+    "summaryOff": "AI summary is off. Add an Anthropic API key on the server to turn it on.",
+    "summaryNoRecent": "No articles in the last 24 hours to summarize.",
+    "sentimentKeywords": "Sentiment tags: keyword rules (no AI), may be inaccurate.",
+    "sentimentBy": "Sentiment tags: {source}"
   },
   "insight": {
     "profileTitle": "Leadership & profile",

@@ -4,12 +4,16 @@ import {
   type Guidance,
   type InsightResponse,
   type Lang,
+  type NewsItem,
   type NewsResponse,
   type Quote,
   type Range,
+  type Sentiment,
+  type SentimentMethod,
   type SourceMeta,
   type SymbolMatch,
 } from '@tm/shared';
+import type { MarketDataProvider } from '../providers/types.js';
 import type { AiService } from '../ai/ai-service.js';
 import { cached, type Cache, type CachedResult } from '../cache/cache.js';
 import { TTL } from '../config/cache-ttl.js';
@@ -33,11 +37,40 @@ async function settle<T>(p: Promise<T>): Promise<T | null> {
   }
 }
 
+const MAX_HEADLINES = 20;
+const MIN_RELEVANT = 5;
+
+/** Short brand names that don't appear in the legal company name. */
+const ALIASES: Record<string, string[]> = { GOOGL: ['Google'], GOOG: ['Google'], META: ['Facebook', 'Instagram'], BRK: ['Berkshire'] };
+
+/** Does the article name the ticker or the company (e.g. "Apple" for "Apple Inc")? */
+function mentions(n: NewsItem, symbol: string, companyName: string | null): boolean {
+  const text = `${n.headline} ${n.snippet}`;
+  const names = [...(ALIASES[symbol.split('.')[0]] ?? [])];
+  const short = companyName
+    ?.replace(/[,.]/g, ' ')
+    .split(/\s+/)
+    .find((w) => w.length >= 3 && !/^(the|inc|corp|corporation|company|co|ltd|plc|holdings|group)$/i.test(w));
+  if (short) names.push(short);
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`\\b${esc(symbol)}\\b`).test(text)) return true;
+  return names.some((w) => new RegExp(`\\b${esc(w)}\\b`, 'i').test(text));
+}
+const MAX_SUMMARY_ARTICLES = 25;
+const SENTIMENT_BATCH = 40;
+
+export interface AiServices {
+  /** Claude, when ANTHROPIC_API_KEY is set. */
+  claude: AiService | null;
+  keyword: AiService;
+  mock: AiService;
+}
+
 export class MarketService {
   constructor(
     private readonly providers: ProviderRegistry,
     private readonly cache: Cache,
-    private readonly ai: AiService,
+    private readonly ai: AiServices,
   ) {}
 
   async search(q: string): Promise<SymbolMatch[]> {
@@ -84,40 +117,89 @@ export class MarketService {
     );
   }
 
-  async news(symbol: string, lang: Lang): Promise<NewsResponse> {
-    const p = this.providers.for('news');
-    const to = Date.now();
-    const from = to - 24 * 3600_000;
-    const itemsRes = await cached(this.cache, `news:${p.name}:${symbol}`, TTL.news, async () => {
-      const items = await withRateLimitRetry(() => p.getNews(symbol, from, to));
-      const tags = await this.ai.tagSentiment(items);
-      return items.map((it, i) => ({ ...it, sentiment: it.sentiment ?? tags[i] ?? null }));
-    });
-    const items = itemsRes.value.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-    const meta: SourceMeta = {
-      source: p.name,
-      updatedAt: new Date(itemsRes.storedAt).toISOString(),
-      ...(itemsRes.stale ? { stale: true, note: STALE_NOTE } : {}),
-    };
+  /** Real headlines get Claude (if a key is set) or keyword rules; mock headlines get the mock AI. */
+  private aiFor(provider: MarketDataProvider): AiService {
+    if (provider instanceof MockProvider) return this.ai.mock;
+    return this.ai.claude ?? this.ai.keyword;
+  }
 
-    let summary: NewsResponse['summary'] = null;
-    if (items.length > 0) {
-      const quote = await settle(this.quote(symbol));
-      const sRes = await settle(
-        cached(this.cache, `newsSummary:${this.ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
-          this.ai.summarizeNews(symbol, lang, items, quote?.changePct ?? null),
-        ),
-      );
-      if (sRes) {
-        summary = {
-          text: sRes.value.text,
-          articleCount: sRes.value.articleCount,
-          lang,
-          meta: { source: sRes.value.source, updatedAt: new Date(sRes.storedAt).toISOString() },
-        };
+  /**
+   * Sentiment per headline, cached per article id so each headline is classified once.
+   * If the AI call fails, falls back to keyword rules for this response (not cached).
+   */
+  private async tagSentiment(ai: AiService, symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
+    const labels = new Map<string, Sentiment>();
+    const todo: NewsItem[] = [];
+    for (const it of items) {
+      if (it.sentiment) labels.set(it.id, it.sentiment);
+      else {
+        const hit = await this.cache.get<Sentiment>(`sentiment:${ai.name}:${it.id}`);
+        if (hit) labels.set(it.id, hit.value);
+        else todo.push(it);
       }
     }
-    return { symbol, lang, summary, items, meta };
+    let method: SentimentMethod = ai.sentimentMethod;
+    let source = ai.name;
+    for (let i = 0; i < todo.length; i += SENTIMENT_BATCH) {
+      const batch = todo.slice(i, i + SENTIMENT_BATCH);
+      try {
+        const tags = await ai.tagSentiment(symbol, batch);
+        for (const [j, it] of batch.entries()) {
+          labels.set(it.id, tags[j]);
+          await this.cache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
+        }
+      } catch {
+        const tags = await this.ai.keyword.tagSentiment(symbol, batch);
+        batch.forEach((it, j) => labels.set(it.id, tags[j]));
+        method = 'keywords';
+        source = this.ai.keyword.name;
+      }
+    }
+    return { items: items.map((it) => ({ ...it, sentiment: labels.get(it.id) ?? null })), method, source };
+  }
+
+  async news(symbol: string, lang: Lang): Promise<NewsResponse> {
+    const p = this.providers.for('news');
+    const ai = this.aiFor(p);
+    const now = Date.now();
+    // Headline list: the last 3 days (weekends are quiet). The AI summary uses only the last 24 h.
+    const quote = await settle(this.quote(symbol));
+    const res = await cached(this.cache, `news:${p.name}:${ai.name}:${symbol}`, TTL.news, async () => {
+      const raw = await withRateLimitRetry(() => p.getNews(symbol, now - 3 * 86400_000, now));
+      const sorted = raw.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+      // Providers tag many market-wide stories to big tickers; prefer ones that mention the company.
+      const relevant = sorted.filter((n) => mentions(n, symbol, quote?.name ?? null));
+      const latest = (relevant.length >= MIN_RELEVANT ? relevant : sorted).slice(0, MAX_HEADLINES);
+      return this.tagSentiment(ai, symbol, latest);
+    });
+    const { items, method, source } = res.value;
+    const meta: SourceMeta = {
+      source: p.name,
+      updatedAt: new Date(res.storedAt).toISOString(),
+      ...(res.stale ? { stale: true, note: STALE_NOTE } : {}),
+    };
+    const base = { symbol, lang, items, sentimentMethod: items.length ? method : null, sentimentSource: items.length ? source : null, meta };
+
+    if (!ai.canSummarize) return { ...base, summary: null, summaryStatus: 'disabled' };
+    const recent = items.filter((n) => Date.parse(n.publishedAt) >= Date.now() - 24 * 3600_000).slice(0, MAX_SUMMARY_ARTICLES);
+    if (recent.length === 0) return { ...base, summary: null, summaryStatus: 'no-recent' };
+
+    const sRes = await settle(
+      cached(this.cache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
+        ai.summarizeNews(symbol, quote?.name ?? null, lang, recent, quote?.changePct ?? null),
+      ),
+    );
+    if (!sRes?.value) return { ...base, summary: null, summaryStatus: 'error' };
+    return {
+      ...base,
+      summary: {
+        text: sRes.value.text,
+        articleCount: sRes.value.articleCount,
+        lang,
+        meta: { source: sRes.value.source, updatedAt: new Date(sRes.storedAt).toISOString() },
+      },
+      summaryStatus: 'ok',
+    };
   }
 
   async insight(symbol: string, lang: Lang): Promise<InsightResponse> {
