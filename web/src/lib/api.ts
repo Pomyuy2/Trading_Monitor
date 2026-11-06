@@ -4,6 +4,7 @@ import type {
   CandleSeries,
   InsightResponse,
   Lang,
+  LevelsResponse,
   MetaResponse,
   NewsResponse,
   Quote,
@@ -47,6 +48,16 @@ export function useQuote(symbol: string | null, detail = false) {
 
 export function useCandles(symbol: string | null, range: Range) {
   return useSWR<CandleSeries>(symbol ? `/api/candles/${enc(symbol)}?range=${range}` : null, fetchJson, {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+    ...noRetryOn404,
+  });
+}
+
+export function useLevels(symbol: string | null, range: Range) {
+  const intraday = range === '1H' || range === '1D' || range === '1W' || range === '1M';
+  return useSWR<LevelsResponse>(symbol ? `/api/levels/${enc(symbol)}?range=${range}` : null, fetchJson, {
+    refreshInterval: intraday ? 60_000 : 0, // levels follow new candles
     revalidateOnFocus: false,
     keepPreviousData: true,
     ...noRetryOn404,

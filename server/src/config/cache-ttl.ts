@@ -11,6 +11,7 @@ export const TTL = {
   keyStats: 5 * MIN,
   news: 5 * MIN,
   newsSummary: 15 * MIN,
+  levels: 24 * HOUR, // keyed by the latest candle, so new candles trigger a recompute anyway
   sentiment: 7 * 24 * HOUR, // per headline; a headline's tag doesn't change
   profile: 24 * HOUR,
   estimates: 12 * HOUR,

@@ -3,10 +3,11 @@
 import { RANGES, type Quote, type Range } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import dynamic from 'next/dynamic';
-import { useMemo, useState } from 'react';
-import { useCandles } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { useCandles, useLevels } from '@/lib/api';
+import type { Zone } from './level-zones';
 import { fmtSignedPct } from '@/lib/format';
-import type { ChartType } from './PriceChart';
+import type { ChartLine, ChartType } from './PriceChart';
 import { Change, cx, ErrorState, Skeleton, SourceLine, useLang } from './ui';
 
 const PriceChart = dynamic(() => import('./PriceChart').then((m) => m.PriceChart), {
@@ -29,6 +30,10 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compare }:
   const [type, setType] = useState<ChartType>('line');
   const { data, error, isLoading, isValidating, mutate } = useCandles(symbol, range);
   const cmp = useCandles(compare, range);
+  const [showLevels, setShowLevels] = usePersistedFlag('tm.levels', true);
+  const [showPivots, setShowPivots] = usePersistedFlag('tm.pivots', false);
+  const lv = useLevels(symbol, range);
+  const levels = lv.data && lv.data.symbol === symbol && lv.data.range === range ? lv.data : undefined;
 
   // keepPreviousData may hand back another symbol's series briefly; ignore it.
   const series = data && data.symbol === symbol ? data : undefined;
@@ -50,6 +55,22 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compare }:
     if (!c || c.length < 2) return null;
     return ((c[c.length - 1].close - c[0].open) / c[0].open) * 100;
   }, [compareData, candles]);
+
+  // Overlays are hidden while comparing (the chart is on a % scale then).
+  const zones = useMemo<Zone[]>(() => {
+    if (!showLevels || !levels || compare) return [];
+    return [...levels.supports, ...levels.resistances].map((l) => ({
+      low: l.zoneLow,
+      high: l.zoneHigh,
+      rgb: l.kind === 'support' ? SUPPORT_RGB : RESIST_RGB,
+      alpha: STRENGTH_ALPHA[l.strength],
+    }));
+  }, [showLevels, levels, compare]);
+  const lines = useMemo<ChartLine[]>(() => {
+    if (!showPivots || !levels?.pivots || compare) return [];
+    const p = levels.pivots;
+    return (['R2', 'R1', 'P', 'S1', 'S2'] as const).map((k) => ({ price: p[k], title: k, color: PIVOT_COLOR, dashed: true }));
+  }, [showPivots, levels, compare]);
 
   const rangeName = t(`rangeNames.${range}`);
   const ariaLabel = `${t('label', { symbol })} · ${rangeName} · ${fmtSignedPct(changePct, lang)}`;
@@ -100,7 +121,17 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compare }:
             <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-0.5 w-4 bg-compare" />{compare} <Change pct={cmpPct} className="text-xs" /></span>
           </span>
         )}
-        {series && <span className="ml-auto text-xs text-muted">{t('candleSize', { size: t(`sizes.${series.resolution}`) })}</span>}
+        <span className="ml-auto flex items-center gap-3">
+          {series && <span className="hidden text-xs text-muted sm:inline">{t('candleSize', { size: t(`sizes.${series.resolution}`) })}</span>}
+          <span role="group" aria-label={t('overlays')} className="flex gap-1">
+            <OverlayToggle on={showLevels} onClick={() => setShowLevels(!showLevels)} disabled={!!compare} title={t('levelsHint')} swatch="levels">
+              {t('levels')}
+            </OverlayToggle>
+            <OverlayToggle on={showPivots} onClick={() => setShowPivots(!showPivots)} disabled={!!compare} title={t('levelsHint')} swatch="pivots">
+              {t('pivots')}
+            </OverlayToggle>
+          </span>
+        </span>
       </div>
 
       <div className="relative order-1 px-1 pt-2 lg:order-none">
@@ -118,6 +149,8 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compare }:
             type={type}
             live={streaming && quote?.marketState === 'open'}
             compare={compareData}
+            zones={zones}
+            lines={lines}
             ariaLabel={ariaLabel}
           />
         ) : null}
@@ -131,4 +164,53 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compare }:
       </div>
     </section>
   );
+}
+
+const SUPPORT_RGB = '76,141,255'; // #4C8DFF
+const RESIST_RGB = '242,153,74'; // #F2994A
+const PIVOT_COLOR = '#9AA4B2';
+const STRENGTH_ALPHA = { weak: 0.07, medium: 0.14, strong: 0.24 } as const;
+
+function OverlayToggle({ on, onClick, disabled, title, swatch, children }: { on: boolean; onClick: () => void; disabled?: boolean; title: string; swatch: 'levels' | 'pivots'; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={cx(
+        'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium disabled:opacity-40',
+        on ? 'border-accent/60 bg-accent/10 text-text' : 'border-border text-muted hover:text-text',
+      )}
+    >
+      {swatch === 'levels' ? (
+        <span aria-hidden className="flex flex-col gap-0.5">
+          <span className="h-1 w-3 rounded-sm bg-[#F2994A]/70" />
+          <span className="h-1 w-3 rounded-sm bg-accent/70" />
+        </span>
+      ) : (
+        <span aria-hidden className="w-3 border-t border-dotted border-muted" />
+      )}
+      {children}
+    </button>
+  );
+}
+
+/** Boolean UI preference remembered in this browser (convenience only). */
+function usePersistedFlag(key: string, initial: boolean): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(initial);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(key);
+      if (s != null) setV(s === '1');
+    } catch {}
+  }, [key]);
+  const set = (next: boolean) => {
+    setV(next);
+    try {
+      localStorage.setItem(key, next ? '1' : '0');
+    } catch {}
+  };
+  return [v, set];
 }

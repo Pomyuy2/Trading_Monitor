@@ -131,8 +131,19 @@ Handle these states:
    - Done when every section renders with fake data and the range buttons change the chart.
 2. **Live prices + chart history.** Finnhub WebSocket relay, FMP candles for all 7 ranges, live/delayed/closed states. Done when a real US ticker (e.g. AAPL) ticks live during market hours and all ranges load.
 3. **News + AI summary + sentiment**, in both languages.
+3.5. **Support & Resistance** (no AI).
+   - Server: compute levels from the candles of the selected range.
+     - Find swing highs/lows (5-bar fractal), merge levels within 0.75% of each other, score each by touch count, recency and volume at the touches.
+     - Return the top 3 supports below and top 3 resistances above the current price, each with price, zone (low–high), touches, last touched date and strength (weak/medium/strong).
+     - Also return classic pivot points (P, S1, S2, R1, R2) from the previous session.
+     - Cache per symbol and range; recompute when new candles arrive.
+   - Chart: draw levels as shaded zones. Support blue `#4C8DFF`, resistance orange `#F2994A`; stronger = more opaque. "Levels" and "Pivots" toggle buttons above the chart.
+   - "Key levels" card beside the chart: nearest 2 supports and 2 resistances, with distance from current price in %, touches and last touched date. Translated EN/TH.
+   - Wording: neutral information only, never "buy" or "sell". Tooltip: "Levels are based on past prices and do not predict future moves."
+   - Unit tests for swing detection and clustering with fixed candle data.
 4. **Company insight**: profile, estimates, price targets, ratings, guidance extraction with sources.
 5. **Watchlist, search, price alerts.** Alerts are checked on the server; a browser notification fires when one triggers.
+   - Level alerts (from Phase 3.5): "price within 1% of a support/resistance level" and "breakout" (price closes beyond a level's zone).
 6. **Polish:**
    - Loading skeletons and error states.
    - Unit tests for the provider adapters, range mapping and the guidance JSON schema.

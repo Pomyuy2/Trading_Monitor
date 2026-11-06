@@ -235,6 +235,42 @@ export interface InsightResponse {
   earnings: EarningsEvent | null;
 }
 
+// ---- Support & resistance ----
+export type LevelStrength = 'weak' | 'medium' | 'strong';
+
+export interface PriceLevel {
+  kind: 'support' | 'resistance';
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  touches: number;
+  lastTouched: string; // ISO timestamp of the most recent swing in this zone
+  strength: LevelStrength;
+  score: number; // 0..1
+}
+
+export interface Pivots {
+  P: number;
+  R1: number;
+  R2: number;
+  S1: number;
+  S2: number;
+  sessionDate: string; // YYYY-MM-DD of the session the pivots were computed from
+  meta: SourceMeta;
+}
+
+export interface LevelsResponse {
+  symbol: string;
+  range: Range;
+  resolution: Resolution;
+  price: number | null; // price used to split supports / resistances
+  supports: PriceLevel[]; // up to 3, nearest first
+  resistances: PriceLevel[]; // up to 3, nearest first
+  pivots: Pivots | null;
+  candleCount: number;
+  meta: SourceMeta;
+}
+
 export interface WatchlistItem {
   symbol: string;
   addedAt: string;

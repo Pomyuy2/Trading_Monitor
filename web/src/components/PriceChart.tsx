@@ -16,7 +16,10 @@ import {
   type SeriesType,
   type Time,
   type UTCTimestamp,
+  type IPriceLine,
+  LineStyle,
 } from 'lightweight-charts';
+import { LevelZonesPrimitive, type Zone } from './level-zones';
 import { useCallback, useEffect, useRef } from 'react';
 import { intlLocale } from '@/lib/format';
 import { useTickListener, type LiveTick } from '@/lib/live';
@@ -42,12 +45,24 @@ interface Props {
   type: ChartType;
   live: boolean;
   compare?: { symbol: string; candles: Candle[] } | null;
+  /** Support / resistance zones to shade, and pivot lines to draw. */
+  zones?: Zone[];
+  lines?: ChartLine[];
   ariaLabel: string;
 }
 
-const toTime = (t: number) => t as UTCTimestamp;
+export interface ChartLine {
+  price: number;
+  title: string;
+  color: string;
+  dashed?: boolean;
+}
 
-export function PriceChart({ symbol, candles, resolution, type, live, compare, ariaLabel }: Props) {
+const toTime = (t: number) => t as UTCTimestamp;
+const NONE_Z: Zone[] = [];
+const NONE_L: ChartLine[] = [];
+
+export function PriceChart({ symbol, candles, resolution, type, live, compare, zones = NONE_Z, lines = NONE_L, ariaLabel }: Props) {
   const lang = useLang();
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -57,6 +72,32 @@ export function PriceChart({ symbol, candles, resolution, type, live, compare, a
   const last = useRef<Candle | null>(null);
   const typeRef = useRef(type);
   const resRef = useRef(resolution);
+  const zonesPrim = useRef<LevelZonesPrimitive | null>(null);
+  const priceLines = useRef<IPriceLine[]>([]);
+  const overlay = useRef({ zones, lines });
+  overlay.current = { zones, lines };
+
+  /** (Re)apply zones + lines to the current main series. */
+  const applyOverlay = useCallback(() => {
+    const s = main.current;
+    if (!s) return;
+    if (!zonesPrim.current) {
+      zonesPrim.current = new LevelZonesPrimitive();
+      s.attachPrimitive(zonesPrim.current);
+    }
+    zonesPrim.current.setZones(overlay.current.zones);
+    for (const l of priceLines.current) s.removePriceLine(l);
+    priceLines.current = overlay.current.lines.map((l) =>
+      s.createPriceLine({
+        price: l.price,
+        color: l.color,
+        lineWidth: 1,
+        lineStyle: l.dashed ? LineStyle.Dotted : LineStyle.Solid,
+        axisLabelVisible: true,
+        title: l.title,
+      }),
+    );
+  }, []);
 
   // Create once.
   useEffect(() => {
@@ -117,6 +158,8 @@ export function PriceChart({ symbol, candles, resolution, type, live, compare, a
     if (!c) return;
     for (const s of [main.current, vol.current, cmp.current]) if (s) c.removeSeries(s);
     main.current = vol.current = cmp.current = null;
+    zonesPrim.current = null; // primitives and price lines go away with their series
+    priceLines.current = [];
     typeRef.current = type;
     resRef.current = resolution;
     last.current = candles.length ? { ...candles[candles.length - 1] } : null;
@@ -152,8 +195,11 @@ export function PriceChart({ symbol, candles, resolution, type, live, compare, a
       cmp.current = s;
     }
 
+    applyOverlay();
     c.timeScale().fitContent();
-  }, [candles, type, compare, resolution]);
+  }, [candles, type, compare, resolution, applyOverlay]);
+
+  useEffect(() => applyOverlay(), [zones, lines, applyOverlay]);
 
   // Live tick → update the last candle in place (or open a new one).
   const onTick = useCallback((tick: LiveTick) => {

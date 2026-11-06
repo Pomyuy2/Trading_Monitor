@@ -44,7 +44,7 @@ html[lang='th'] body {
 /* ---------- Dashboard grid ----------
    phone:  price, chart, tabs, then one active panel
    lg:     sidebar + stacked main
-   xl:     chart | news side by side, stats under chart, insight row below */
+   xl:     chart | key levels + news side by side, stats under chart, insight row below */
 .dash-grid {
   display: flex;
   flex-direction: column;
@@ -52,6 +52,7 @@ html[lang='th'] body {
 }
 .area-price { grid-area: price; }
 .area-chart { grid-area: chart; }
+.area-levels { grid-area: levels; }
 .area-tabs { grid-area: tabs; }
 .area-news { grid-area: news; }
 .area-insight { grid-area: insight; }
@@ -62,7 +63,7 @@ html[lang='th'] body {
     display: grid;
     align-content: start;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'price' 'chart' 'stats' 'news' 'insight';
+    grid-template-areas: 'price' 'chart' 'levels' 'stats' 'news' 'insight';
   }
 }
 @media (min-width: 1280px) {
@@ -70,6 +71,7 @@ html[lang='th'] body {
     grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
     grid-template-areas:
       'price price'
+      'chart levels'
       'chart news'
       'stats news'
       'insight insight';

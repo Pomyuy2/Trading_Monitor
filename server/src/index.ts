@@ -92,6 +92,14 @@ app.get<{ Params: { symbol: string }; Querystring: { range?: string } }>('/api/c
   return market.candles(s, range);
 });
 
+app.get<{ Params: { symbol: string }; Querystring: { range?: string } }>('/api/levels/:symbol', async (req, reply) => {
+  const s = parseSymbol(req.params.symbol, reply);
+  if (!s) return;
+  const range = req.query.range ?? '1D';
+  if (!isRange(range)) return reply.code(400).send({ error: 'Invalid range' });
+  return market.levels(s, range);
+});
+
 app.get<{ Params: { symbol: string }; Querystring: { lang?: string } }>('/api/news/:symbol', async (req, reply) => {
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;

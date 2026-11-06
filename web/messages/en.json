@@ -76,7 +76,11 @@
       "1hour": "1-hour",
       "1day": "Daily",
       "1week": "Weekly"
-    }
+    },
+    "overlays": "Chart overlays",
+    "levels": "Levels",
+    "pivots": "Pivots",
+    "levelsHint": "Levels are based on past prices and do not predict future moves."
   },
   "stats": {
     "title": "Key stats",
@@ -182,5 +186,28 @@
   },
   "footer": {
     "disclaimer": "Data from {providers}. May be delayed. Not investment advice."
+  },
+  "levels": {
+    "title": "Key levels",
+    "aboutLevels": "About these levels",
+    "disclaimer": "Levels are based on past prices and do not predict future moves.",
+    "basis": "From {count} {size} candles ({range})",
+    "ladder": "Nearest resistance and support levels",
+    "current": "Price",
+    "currentPrice": "Current price",
+    "support": "Support",
+    "resistance": "Resistance",
+    "noSupport": "No support level found below the price in this range",
+    "noResistance": "No resistance level found above the price in this range",
+    "distance": "Distance from the current price",
+    "touches": "{count, plural, one {# touch} other {# touches}}",
+    "lastTouched": "last {date}",
+    "strength": {
+      "weak": "Weak",
+      "medium": "Medium",
+      "strong": "Strong"
+    },
+    "pivots": "Pivot points",
+    "pivotsFrom": "from {date} session"
   }
 }

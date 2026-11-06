@@ -9,6 +9,7 @@ import { ChartCard } from './ChartCard';
 import { AlertDialog, CompareDialog, Modal } from './Dialogs';
 import { Header } from './Header';
 import { InsightCards } from './InsightCards';
+import { KeyLevelsCard } from './KeyLevelsCard';
 import { NewsCard } from './NewsCard';
 import { PriceHeader } from './PriceHeader';
 import { StatsCard } from './StatsCard';
@@ -81,6 +82,9 @@ export function Dashboard({ symbol }: { symbol: string }) {
           </div>
           <div className="area-chart min-w-0">
             <ChartCard symbol={symbol} range={range} onRange={changeRange} quote={live.data} streaming={live.streaming} compare={compare} />
+          </div>
+          <div className="area-levels min-w-0">
+            <KeyLevelsCard symbol={symbol} range={range} quote={live.data} />
           </div>
 
           {/* Phone only: tabs for the panels below the chart */}

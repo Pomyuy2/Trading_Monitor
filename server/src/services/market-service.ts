@@ -4,7 +4,9 @@ import {
   type Guidance,
   type InsightResponse,
   type Lang,
+  type LevelsResponse,
   type NewsItem,
+  type Pivots,
   type NewsResponse,
   type Quote,
   type Range,
@@ -14,6 +16,8 @@ import {
   type SymbolMatch,
 } from '@tm/shared';
 import type { MarketDataProvider } from '../providers/types.js';
+import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
+import { nyDate } from '../lib/market-time.js';
 import type { AiService } from '../ai/ai-service.js';
 import { cached, type Cache, type CachedResult } from '../cache/cache.js';
 import { TTL } from '../config/cache-ttl.js';
@@ -115,6 +119,47 @@ export class MarketService {
     return markStale(
       await cached(this.cache, `candles:${p.name}:${symbol}:${range}`, ttl, () => withRateLimitRetry(() => p.getCandles(symbol, range))),
     );
+  }
+
+  /**
+   * Support / resistance for the selected range. The (price-independent) level list is cached per
+   * symbol + range + latest candle, so it's recomputed only when new candles arrive; the split into
+   * supports / resistances uses the current price on every request.
+   */
+  async levels(symbol: string, range: Range): Promise<LevelsResponse> {
+    const series = await this.candles(symbol, range);
+    const bars = series.candles;
+    const last = bars[bars.length - 1];
+    const key = `levels:${series.meta.source}:${symbol}:${range}:${bars.length}:${last?.time ?? 0}`;
+    const scored = (await cached(this.cache, key, TTL.levels, async () => computeLevels(bars))).value;
+    const quote = await settle(this.quote(symbol));
+    const price = quote?.price ?? last?.close ?? null;
+    const { supports, resistances } = price != null ? splitLevels(scored, price) : { supports: [], resistances: [] };
+    const pivots = await settle(this.pivots(symbol, quote));
+    return {
+      symbol,
+      range,
+      resolution: series.resolution,
+      price,
+      supports,
+      resistances,
+      pivots,
+      candleCount: bars.length,
+      meta: { ...series.meta },
+    };
+  }
+
+  /** Classic pivots from the most recent completed regular session (daily candles, already cached). */
+  private async pivots(symbol: string, quote: Quote | null): Promise<Pivots | null> {
+    const daily = await this.candles(symbol, '6M');
+    const today = nyDate(Date.now() / 1000);
+    const sessionInProgress = quote?.marketState === 'open' || quote?.marketState === 'pre';
+    // Daily bars are keyed by their calendar date at 00:00 UTC.
+    const dateOf = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+    const done = daily.candles.filter((c) => !sessionInProgress || dateOf(c.time) < today);
+    const prev = done[done.length - 1];
+    if (!prev) return null;
+    return { ...classicPivots(prev.high, prev.low, prev.close), sessionDate: dateOf(prev.time), meta: { ...daily.meta } };
   }
 
   /** Real headlines get Claude (if a key is set) or keyword rules; mock headlines get the mock AI. */
