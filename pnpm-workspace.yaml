@@ -1,0 +1,10 @@
+packages:
+  - shared
+  - server
+  - web
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - '@tailwindcss/oxide'
+  - unrs-resolver

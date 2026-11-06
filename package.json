@@ -1,0 +1,13 @@
+{
+  "name": "trading-monitor",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "scripts": {
+    "dev": "pnpm --parallel --filter server --filter web dev",
+    "build": "pnpm --filter web build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "app": {
+    "title": "Trading Monitor",
+    "skipToContent": "Skip to main content",
+    "mockBanner": "Demo mode: all data is mock data. Add API keys in server/.env to use real providers.",
+    "mockPartial": "Some sections still use demo data: {sections}.",
+    "mockSections": {
+      "search": "search",
+      "quote": "price",
+      "realtime": "live prices",
+      "profile": "company profile",
+      "news": "news",
+      "keyStats": "volume",
+      "dailyCandles": "chart (6M–5Y)",
+      "intradayCandles": "chart (1H–1M)",
+      "estimates": "analyst data",
+      "priceTargets": "analyst data",
+      "ratings": "analyst data",
+      "earningsCalendar": "analyst data",
+      "transcripts": "guidance"
+    }
+  },
+  "header": {
+    "searchLabel": "Search ticker or company",
+    "searchPlaceholder": "Search ticker or company…",
+    "searching": "Searching…",
+    "noResults": "No matches",
+    "openWatchlist": "Open watchlist",
+    "language": "Language"
+  },
+  "price": {
+    "live": "Live",
+    "updated": "updated {time}",
+    "delayed": "Delayed 15 min",
+    "closed": "Market closed · last close",
+    "reconnecting": "Reconnecting…",
+    "setAlert": "Set price alert",
+    "compare": "Compare",
+    "stopCompare": "Stop comparing {symbol}",
+    "today": "Today",
+    "notFound": "Symbol not found",
+    "preMarket": "Pre-market",
+    "afterHours": "After hours"
+  },
+  "chart": {
+    "label": "Price chart for {symbol}",
+    "rangesLabel": "Chart range",
+    "ranges": {
+      "1H": "1H",
+      "1D": "1D",
+      "1W": "1W",
+      "1M": "1M",
+      "6M": "6M",
+      "1Y": "1Y",
+      "5Y": "5Y"
+    },
+    "rangeNames": {
+      "1H": "1 hour",
+      "1D": "1 day",
+      "1W": "1 week",
+      "1M": "1 month",
+      "6M": "6 months",
+      "1Y": "1 year",
+      "5Y": "5 years"
+    },
+    "changeOver": "Change over {range}",
+    "line": "Line",
+    "candles": "Candles",
+    "chartType": "Chart type",
+    "noData": "No price history for this range",
+    "candleSize": "{size} candles",
+    "sizes": {
+      "1min": "1-min",
+      "5min": "5-min",
+      "30min": "30-min",
+      "1hour": "1-hour",
+      "1day": "Daily",
+      "1week": "Weekly"
+    }
+  },
+  "stats": {
+    "title": "Key stats",
+    "open": "Open",
+    "dayRange": "Day high / low",
+    "prevClose": "Previous close",
+    "volume": "Volume",
+    "avgVolume": "Avg. volume",
+    "marketCap": "Market cap",
+    "pe": "P/E (TTM)",
+    "week52": "52-week range",
+    "dividendYield": "Dividend yield"
+  },
+  "news": {
+    "title": "News",
+    "aiSummary": "AI summary",
+    "articles": "{count, plural, one {# article} other {# articles}} in last 24 h",
+    "positive": "Positive",
+    "negative": "Negative",
+    "neutral": "Neutral",
+    "noNews": "No news in the last 24 hours",
+    "noSummary": "No AI summary available",
+    "aiDisclaimer": "AI-generated from headlines. May contain errors."
+  },
+  "insight": {
+    "profileTitle": "Leadership & profile",
+    "ceo": "CEO",
+    "cfo": "CFO",
+    "since": "since {year}",
+    "hq": "Headquarters",
+    "founded": "Founded",
+    "employees": "Employees",
+    "business": "Business",
+    "guidanceTitle": "Next-year plan & guidance",
+    "fiscalYear": "FY{year}",
+    "revenueGuidance": "Revenue guidance",
+    "epsGuidance": "EPS guidance",
+    "capex": "Capex budget",
+    "rnd": "R&D budget",
+    "priorities": "Top strategic priorities",
+    "notStated": "Not stated in source",
+    "showQuote": "Show supporting quote",
+    "noGuidance": "No guidance found in the latest earnings call or annual report",
+    "fromSource": "From: {title} · {date}",
+    "analystTitle": "Analyst expectations",
+    "revenueEst": "Revenue estimate",
+    "epsEst": "EPS estimate",
+    "priceTarget": "12-month price target",
+    "low": "Low",
+    "avg": "Average",
+    "high": "High",
+    "current": "Current",
+    "ratings": "Ratings",
+    "buy": "Buy",
+    "hold": "Hold",
+    "sell": "Sell",
+    "nextEarnings": "Next earnings",
+    "analysts": "{count} analysts"
+  },
+  "common": {
+    "source": "Source: {source}",
+    "updated": "Updated {time}",
+    "stale": "Stale",
+    "staleNote": "Provider unavailable — showing the last cached data",
+    "notAvailable": "Not available from source",
+    "loadError": "Couldn't load this section",
+    "retry": "Retry",
+    "close": "Close",
+    "cancel": "Cancel",
+    "loading": "Loading…"
+  },
+  "tabs": {
+    "label": "Details",
+    "news": "News",
+    "insight": "Insight",
+    "stats": "Stats"
+  },
+  "watchlist": {
+    "title": "Watchlist",
+    "empty": "Your watchlist is empty. Search for a symbol to add it.",
+    "add": "Add {symbol} to watchlist",
+    "remove": "Remove {symbol} from watchlist",
+    "addCurrent": "Add {symbol}",
+    "inList": "In watchlist"
+  },
+  "alert": {
+    "title": "Price alert · {symbol}",
+    "condition": "Notify me when the price goes",
+    "above": "Above",
+    "below": "Below",
+    "price": "Target price (USD)",
+    "save": "Save alert",
+    "phaseNote": "Alerts are saved and checked on the server from Phase 5. This form is a preview."
+  },
+  "compare": {
+    "title": "Compare {symbol} with…",
+    "hint": "Both lines are shown as % change over the selected range.",
+    "pick": "Compare with {symbol}"
+  },
+  "footer": {
+    "disclaimer": "Data from {providers}. May be delayed. Not investment advice."
+  }
+}
