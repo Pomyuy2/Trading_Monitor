@@ -10,6 +10,8 @@ const schema = z.object({
   FMP_API_KEY: z.string().optional().transform((v) => v || undefined),
   TWELVEDATA_API_KEY: z.string().optional().transform((v) => v || undefined),
   ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
+  // SEC asks automated clients to identify themselves (e.g. "Your Name your@email.com").
+  SEC_USER_AGENT: z.string().default('TradingMonitor personal research app'),
   MOCK_MARKET_STATE: z.enum(['open', 'closed', 'delayed']).default('open'),
 });
 

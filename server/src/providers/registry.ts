@@ -3,6 +3,7 @@ import { env } from '../env.js';
 import { FinnhubProvider } from './finnhub.js';
 import { FmpProvider } from './fmp.js';
 import { MockProvider } from './mock/mock-provider.js';
+import { SecEdgarProvider } from './sec.js';
 import { SetProvider } from './set.js';
 import { TwelveDataProvider } from './twelvedata.js';
 import type { Capability, MarketDataProvider } from './types.js';
@@ -22,6 +23,7 @@ export class ProviderRegistry {
       finnhub: new FinnhubProvider(env.FINNHUB_API_KEY, log),
       fmp: new FmpProvider(env.FMP_API_KEY),
       twelvedata: new TwelveDataProvider(env.TWELVEDATA_API_KEY),
+      sec: new SecEdgarProvider(env.SEC_USER_AGENT),
       set: new SetProvider(),
       mock: this.mock,
     };

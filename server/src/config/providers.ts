@@ -1,6 +1,6 @@
 import type { Capability } from '../providers/types.js';
 
-export type ProviderName = 'finnhub' | 'fmp' | 'twelvedata' | 'mock' | 'set';
+export type ProviderName = 'finnhub' | 'fmp' | 'twelvedata' | 'sec' | 'mock' | 'set';
 
 /**
  * Which provider serves each capability. Change providers here — UI code
@@ -11,7 +11,7 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
   search: 'finnhub',
   quote: 'finnhub',
   realtime: 'finnhub',
-  profile: 'finnhub',
+  profile: 'fmp', // Finnhub's executives endpoint is paid; FMP's profile + key-executives are free
   news: 'finnhub',
   keyStats: 'fmp', // today's volume (not in Finnhub's quote)
   dailyCandles: 'fmp', // 6M, 1Y, 5Y
@@ -20,5 +20,5 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
   priceTargets: 'fmp',
   ratings: 'fmp',
   earningsCalendar: 'fmp',
-  transcripts: 'fmp',
+  transcripts: 'sec', // free SEC filings (8-K earnings release + 10-K MD&A); FMP transcripts are paid
 };

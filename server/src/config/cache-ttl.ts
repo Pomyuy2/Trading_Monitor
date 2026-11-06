@@ -16,5 +16,6 @@ export const TTL = {
   profile: 24 * HOUR,
   estimates: 12 * HOUR,
   search: 1 * HOUR,
+  guidanceDocs: 12 * HOUR, // filing list / text; guidance itself lives until the next earnings date
   guidanceFallback: 7 * 24 * HOUR, // used when the next earnings date is unknown
 } as const;

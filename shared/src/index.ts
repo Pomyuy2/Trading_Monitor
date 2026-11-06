@@ -224,11 +224,25 @@ export interface Transcript {
   meta: SourceMeta;
 }
 
+/** A filing / document guidance can be extracted from (e.g. SEC 8-K earnings release, 10-K). */
+export interface SourceDocument {
+  title: string;
+  date: string; // YYYY-MM-DD
+  url: string;
+  text: string;
+}
+
+export type GuidanceStatus = 'ok' | 'disabled' | 'no-source' | 'error';
+
 export interface InsightResponse {
   symbol: string;
   lang: Lang;
   profile: Profile | null;
   guidance: Guidance | null;
+  /** Why guidance is (or isn't) present. 'disabled' = no AI key. */
+  guidanceStatus: GuidanceStatus;
+  /** Documents the guidance was (or would be) extracted from — linkable even when AI is off. */
+  guidanceSources: { title: string; date: string; url: string }[];
   estimates: Estimates | null;
   priceTargets: PriceTargets | null;
   ratings: Ratings | null;

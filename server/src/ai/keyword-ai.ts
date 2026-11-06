@@ -34,6 +34,7 @@ export class KeywordAi implements AiService {
   readonly name = 'Keyword rules';
   readonly sentimentMethod = 'keywords' as const;
   readonly canSummarize = false;
+  readonly canExtract = false;
 
   async summarizeNews() {
     return null;

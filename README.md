@@ -16,7 +16,7 @@ pnpm dev        # web on http://localhost:3000, server on http://localhost:4000
 ```
 
 No API keys are needed: every capability falls back to `MockProvider` (fake data, labelled "Mock" in the UI).
-Optional: copy `server/.env.example` to `server/.env`.
+Optional: copy `server/.env.example` to `server/.env` and add keys (`FINNHUB_API_KEY`, `FMP_API_KEY`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY`); each missing key falls back to mock data or turns its AI feature off.
 
 Mock-only switch to preview market states: `MOCK_MARKET_STATE=open | closed | delayed` in `server/.env`.
 
@@ -32,10 +32,17 @@ Mock-only switch to preview market states: `MOCK_MARKET_STATE=open | closed | de
 ## Status
 
 - [x] Phase 1: scaffold + mock data
-- [ ] Phase 2: live prices (Finnhub) + chart history (FMP)
-- [ ] Phase 3: news + AI summary + sentiment
-- [ ] Phase 4: company insight + guidance extraction
-- [ ] Phase 5: watchlist (SQLite/Prisma), search, price alerts
+- [x] Phase 2: live prices (Finnhub) + chart history (Twelve Data intraday, FMP daily) — live ticks still to be verified during US market hours
+- [x] Phase 3: news + sentiment (AI summary/sentiment need `ANTHROPIC_API_KEY`; without it, keyword-rule sentiment)
+- [x] Phase 3.5: support & resistance levels + pivot points
+- [x] Phase 4: company insight (FMP profile/estimates/targets/ratings/earnings; guidance from SEC filings, extracted by Claude when `ANTHROPIC_API_KEY` is set)
+- [ ] Phase 5: watchlist (SQLite/Prisma), search, price + level alerts
 - [ ] Phase 6: polish, tests, full README
+
+## Tests
+
+```bash
+pnpm --filter server test
+```
 
 Data may be delayed. Not investment advice.

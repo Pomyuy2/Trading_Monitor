@@ -132,6 +132,7 @@ function GuidanceCard({ data }: { data: InsightResponse | null }) {
               <p className="text-xs text-muted">{t('fromSource', { title: g.sourceTitle, date: fmtIsoDate(g.sourceDate, lang) })}</p>
             )}
             <SourceLine meta={g.meta} />
+            {data && data.guidanceSources.length > 0 && <SourceLinks sources={data.guidanceSources} compact />}
           </div>
         ) : null
       }
@@ -139,7 +140,18 @@ function GuidanceCard({ data }: { data: InsightResponse | null }) {
       {!data ? (
         <LoadingRows n={6} />
       ) : !g ? (
-        <Missing note={t('noGuidance')} />
+        <div className="space-y-3">
+          <Missing
+            note={
+              data.guidanceStatus === 'disabled'
+                ? t('guidanceOff')
+                : data.guidanceStatus === 'error'
+                  ? t('guidanceError')
+                  : t('noGuidance')
+            }
+          />
+          <SourceLinks sources={data.guidanceSources} />
+        </div>
       ) : (
         <dl className="divide-y divide-border">
           <GField label={t('revenueGuidance')} f={g.revenueGuidance} />
@@ -162,6 +174,34 @@ function GuidanceCard({ data }: { data: InsightResponse | null }) {
         </dl>
       )}
     </Card>
+  );
+}
+
+/** Links to the filings guidance is (or would be) extracted from. */
+function SourceLinks({ sources, compact }: { sources: InsightResponse['guidanceSources']; compact?: boolean }) {
+  const t = useTranslations('insight');
+  const lang = useLang();
+  if (sources.length === 0) return null;
+  return (
+    <div>
+      {!compact && <h3 className="text-xs text-muted">{t('sourceFilings')}</h3>}
+      <ul className={compact ? 'space-y-0.5' : 'mt-1 space-y-1'}>
+        {sources.map((s) => (
+          <li key={s.url}>
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              lang="en"
+              className="inline-flex min-h-11 items-center gap-1 text-xs text-accent underline-offset-2 hover:underline"
+            >
+              {s.title} · {fmtIsoDate(s.date, lang)} <span aria-hidden>↗</span>
+              <span className="sr-only">({t('opensNewTab')})</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

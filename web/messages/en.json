@@ -127,7 +127,7 @@
     "priorities": "Top strategic priorities",
     "notStated": "Not stated in source",
     "showQuote": "Show supporting quote",
-    "noGuidance": "No guidance found in the latest earnings call or annual report",
+    "noGuidance": "No recent earnings release or annual report found for this company.",
     "fromSource": "From: {title} · {date}",
     "analystTitle": "Analyst expectations",
     "revenueEst": "Revenue estimate",
@@ -142,7 +142,11 @@
     "hold": "Hold",
     "sell": "Sell",
     "nextEarnings": "Next earnings",
-    "analysts": "{count} analysts"
+    "analysts": "{count} analysts",
+    "guidanceOff": "Guidance extraction is off: it needs AI (an Anthropic API key on the server). You can read the source filings below.",
+    "guidanceError": "Couldn't extract guidance from the filings right now.",
+    "sourceFilings": "Source filings (SEC EDGAR)",
+    "opensNewTab": "opens in a new tab"
   },
   "common": {
     "source": "Source: {source}",

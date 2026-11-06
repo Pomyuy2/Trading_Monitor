@@ -8,6 +8,7 @@ import type {
   Quote,
   Range,
   Ratings,
+  SourceDocument,
   SourceMeta,
   SymbolMatch,
   Transcript,
@@ -56,6 +57,11 @@ export interface MarketDataProvider {
   getRatings(symbol: string): Promise<Ratings>;
   getEarningsCalendar(symbol: string): Promise<EarningsEvent>;
   getLatestTranscript(symbol: string): Promise<Transcript | null>;
+  /**
+   * Documents to extract guidance from (capability 'transcripts'): the latest earnings-call
+   * transcript and/or filings such as an 8-K earnings release and the 10-K. Default: the transcript.
+   */
+  getGuidanceDocuments(symbol: string): Promise<SourceDocument[]>;
 }
 
 export type Capability =
@@ -165,5 +171,9 @@ export abstract class BaseProvider implements MarketDataProvider {
   }
   async getLatestTranscript(_s: string): Promise<Transcript | null> {
     return this.unsupported('getLatestTranscript');
+  }
+  async getGuidanceDocuments(symbol: string): Promise<SourceDocument[]> {
+    const t = await this.getLatestTranscript(symbol);
+    return t ? [{ title: t.title, date: t.date, url: '', text: t.text }] : [];
   }
 }

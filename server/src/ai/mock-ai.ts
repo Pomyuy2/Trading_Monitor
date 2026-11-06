@@ -8,6 +8,7 @@ export class MockAi implements AiService {
   readonly name = 'Mock AI';
   readonly sentimentMethod = 'mock' as const;
   readonly canSummarize = true;
+  readonly canExtract = false;
 
   async summarizeNews(symbol: string, _companyName: string | null, lang: Lang, items: NewsItem[], changePct: number | null): Promise<SummaryResult> {
     const c = COMPANIES.find((x) => x.symbol === symbol);

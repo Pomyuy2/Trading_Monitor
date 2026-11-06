@@ -2,6 +2,7 @@ import {
   isIntradayRange,
   type CandleSeries,
   type Guidance,
+  type GuidanceStatus,
   type InsightResponse,
   type Lang,
   type LevelsResponse,
@@ -18,6 +19,7 @@ import {
 import type { MarketDataProvider } from '../providers/types.js';
 import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
 import { nyDate } from '../lib/market-time.js';
+import { finalizeGuidance, guidanceTexts, withTexts } from '../ai/guidance.js';
 import type { AiService } from '../ai/ai-service.js';
 import { cached, type Cache, type CachedResult } from '../cache/cache.js';
 import { TTL } from '../config/cache-ttl.js';
@@ -260,19 +262,55 @@ export class MarketService {
       c('ratings', TTL.estimates, (p) => p.getRatings(symbol)),
       c('earningsCalendar', TTL.estimates, (p) => p.getEarningsCalendar(symbol)),
     ]);
-    const guidance = await settle(this.guidance(symbol, lang, earnings?.date ?? null));
-    return { symbol, lang, profile, guidance, estimates, priceTargets, ratings, earnings };
+    const g = await this.guidance(symbol, lang, earnings?.date ?? null, profile?.name ?? null);
+    return { symbol, lang, profile, guidance: g.guidance, guidanceStatus: g.status, guidanceSources: g.sources, estimates, priceTargets, ratings, earnings };
   }
 
-  /** Guidance is cached until the next earnings date. Phase 4 adds transcript → AI extraction. */
-  private async guidance(symbol: string, lang: Lang, nextEarnings: string | null): Promise<Guidance | null> {
+  /**
+   * Guidance: source documents (transcript / SEC filings) → Claude extraction → zod validation
+   * + quote check. The English result is cached until the next earnings date; translations are
+   * cached separately per language. Without an AI key, the source documents are still returned
+   * so the UI can link to them.
+   */
+  private async guidance(
+    symbol: string,
+    lang: Lang,
+    nextEarnings: string | null,
+    companyName: string | null,
+  ): Promise<{ guidance: Guidance | null; status: GuidanceStatus; sources: InsightResponse['guidanceSources'] }> {
     const p = this.providers.for('transcripts');
     const untilEarnings = nextEarnings ? Date.parse(nextEarnings) - Date.now() : NaN;
     const ttl = Number.isFinite(untilEarnings) && untilEarnings > 3600_000 ? untilEarnings : TTL.guidanceFallback;
-    const res = await cached(this.cache, `guidance:${p.name}:${symbol}:${lang}`, ttl, async () => {
-      if (p instanceof MockProvider) return p.getMockGuidance(symbol, lang);
-      return null; // TODO(Phase 4): fetch transcript, extract with AI, validate with zod
-    });
-    return res.value;
+
+    if (p instanceof MockProvider) {
+      const g = p.getMockGuidance(symbol, lang);
+      return { guidance: g, status: g ? 'ok' : 'no-source', sources: [] };
+    }
+
+    const docsRes = await settle(cached(this.cache, `guidanceDocs:${p.name}:${symbol}`, TTL.guidanceDocs, () => withRateLimitRetry(() => p.getGuidanceDocuments(symbol))));
+    const docs = docsRes?.value ?? [];
+    const sources = docs.map(({ title, date, url }) => ({ title, date, url }));
+    if (docs.length === 0) return { guidance: null, status: 'no-source', sources };
+
+    const ai = this.ai.claude;
+    if (!ai?.canExtract || !ai.extractGuidance) return { guidance: null, status: 'disabled', sources };
+
+    const docKey = docs.map((d) => `${d.date}:${d.url}`).join('|');
+    try {
+      const en = (
+        await cached(this.cache, `guidance:en:${symbol}:${docKey}`, ttl, async () => {
+          const raw = await ai.extractGuidance!(symbol, companyName, docs);
+          return raw ? finalizeGuidance(raw, docs, { source: `${p.name} · ${ai.name}`, updatedAt: new Date().toISOString() }) : null;
+        })
+      ).value;
+      if (!en) return { guidance: null, status: 'error', sources };
+      if (lang === 'en' || !ai.translate) return { guidance: en, status: 'ok', sources };
+      const tr = await settle(
+        cached(this.cache, `guidance:${lang}:${symbol}:${docKey}`, ttl, async () => withTexts(en, await ai.translate!(guidanceTexts(en), lang))),
+      );
+      return { guidance: tr?.value ?? en, status: 'ok', sources };
+    } catch {
+      return { guidance: null, status: 'error', sources };
+    }
   }
 }

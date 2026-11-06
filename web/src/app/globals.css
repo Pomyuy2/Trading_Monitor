@@ -81,7 +81,7 @@ html[lang='th'] body {
   .area-news {
     position: relative;
     align-self: stretch;
-    min-height: 480px;
+    min-height: 320px; /* fills (chart - key levels) + stats; scrolls inside */
   }
   .area-news > * {
     position: absolute;
