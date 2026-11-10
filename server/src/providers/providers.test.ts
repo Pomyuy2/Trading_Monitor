@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRateLimits } from '../lib/http.js';
 import { FinnhubProvider } from './finnhub.js';
 import { FmpProvider } from './fmp.js';
 import { SecEdgarProvider } from './sec.js';
@@ -28,6 +29,7 @@ function serveBody(match: RegExp, body: string, status = 200, type = 'text/html'
 }
 
 beforeEach(() => {
+  resetRateLimits();
   routes = [];
   calls = [];
   // Freeze "now" at the recording date (only Date — timers and promises stay real).
@@ -297,8 +299,21 @@ describe('TwelveDataProvider (recorded)', () => {
     expect(calls).toHaveLength(8);
   });
 
-  it('does not serve daily ranges', async () => {
-    await expect(td().getCandles('AAPL', '1Y')).rejects.toBeInstanceOf(NotSupportedError);
+  it('serves daily ranges too (fallback for stocks FMP refuses), parsing date-only bars as 00:00 UTC', async () => {
+    const values = [
+      { datetime: '2026-11-05', open: '44.1', high: '46.2', low: '43.9', close: '45.99', volume: '1000' },
+      { datetime: '2026-11-06', open: '46.0', high: '53.5', low: '45.8', close: '53.07', volume: '2000' },
+      { datetime: '2026-11-09', open: '53.2', high: '59.0', low: '52.9', close: '58.86', volume: '3000' },
+    ];
+    serveBody(/time_series\?symbol=RKLB&interval=1day/, JSON.stringify({ status: 'ok', values }), 200, 'application/json');
+    const s = await td().getCandles('RKLB', '1Y');
+    expect(s.resolution).toBe('1day');
+    expect(s.candles.map((c) => new Date(c.time * 1000).toISOString())).toEqual([
+      '2026-11-05T00:00:00.000Z',
+      '2026-11-06T00:00:00.000Z',
+      '2026-11-09T00:00:00.000Z',
+    ]);
+    expect(s.candles.at(-1)).toMatchObject({ close: 58.86, volume: 3000 });
   });
 });
 

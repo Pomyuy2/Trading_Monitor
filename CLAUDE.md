@@ -33,7 +33,8 @@ phases or features. This file records what has been built, the decisions behind 
 | 6 Polish | done: error states by cause + connection/offline banner, provider adapter tests on recorded responses, Playwright smoke test (desktop + phone, demo data), full README |
 
 | 7 Fast, always-ready app | done: `scripts/run.mjs` (`pnpm app:*`) — production build in `web/.next-prod`, background supervisor with crash restart + logs in `logs/`, startup pre-warm of watchlist caches, optional Windows autostart (Startup-folder .vbs) |
-| **8 Watchlist upgrades** | **next**: sparklines, sort, drag to reorder, groups, up/down summary |
+| 8 Watchlist upgrades | done: 1-month sparklines (`/api/sparklines`, batch `/api/quotes`), up/down summary, sort (saved pref `tm_wlsort`), edit-order mode with pointer drag + arrow keys (`PUT /api/watchlist/order`), groups via the row ⋯ menu (`PATCH /api/watchlist/:s`, collapse state in localStorage). Also: Twelve Data fallback for daily candles, `notInPlan` caching, per-provider 429 back-off |
+| **Next** | not planned yet: ask the user (ideas in the prompt's "Later ideas": phone alerts via LINE/email/ntfy, portfolio, AI key, HTTPS, SET) |
 
 Phone alerts: the user does **not** use Telegram; candidates are LINE Official Account, email or the ntfy app (deferred).
 
@@ -55,8 +56,8 @@ pnpm install              # Node >= 20 (developed on Node 24)
 cp server/.env.example server/.env   # then add keys
 pnpm dev                  # development: web http://localhost:3000, server http://localhost:4000
 pnpm app:start            # everyday: production build in the background (see README); app:stop/status/logs/update
-pnpm test                 # vitest: 106 unit/integration tests, no network
-pnpm test:e2e             # Playwright smoke test (28 tests), own ports 3100/4100 + own DB
+pnpm test                 # vitest: 120 unit/integration tests, no network
+pnpm test:e2e             # Playwright smoke test (32 run + 8 phone-skipped), own ports 3100/4100 + own DB
 cd server && npx tsc --noEmit ; cd ../web && npx tsc --noEmit
 ```
 
@@ -130,6 +131,16 @@ New migration: `cd server && npx prisma migrate dev --name <name>` (stop the dev
   unset; `env.test.ts` guards this) — an empty `VAPID_SUBJECT` used to crash startup.
 - `ConnectionBanner`: SWR keeps the last good `data` after a failed check, so use `error` alone to decide
   "server down". Every server capability needs an `app.mockSections.<capability>` label in en/th.
+- **FMP free plan doesn't cover every symbol** (RKLB, FLNC → 402 on everything but the profile). `withFallback`
+  routes `dailyCandles` to Twelve Data (`CAPABILITY_FALLBACKS`) on 402 *or* 429; analyst/stats/events answer
+  `meta.note = 'notInPlan'` (cached 12 h, UI says "not included in the free plan").
+- **FMP's 250 calls/day run out** on heavy test days (429 "Limit Reach", no Retry-After). `getJson` keeps a
+  per-provider back-off (1 min doubling to 30 min) and fails fast while blocked — before that, every request
+  waited ~2.5 s in inline retries. Tests call `resetRateLimits()`.
+- Never pipe Playwright output through `head` (it kills the run before teardown and leaves servers on
+  3100/4100); write to a log file in the scratchpad. The background app does not see code changes until
+  `pnpm app:update`; stop it before Prisma migrations (DLL lock).
+- WatchlistItem has `position` + `group`; the order migration back-fills positions from `addedAt`.
 - News from Finnhub includes market-wide stories; the service keeps articles that mention the ticker
   or company name (falls back to all if fewer than 5).
 

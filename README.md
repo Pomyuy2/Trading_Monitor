@@ -21,7 +21,9 @@ It runs on your own PC with free data plans, and works without any API keys in d
 - **Company insight**: CEO, CFO, HQ, employees; next-year guidance from the latest SEC filings
   (extracted by AI, every value backed by a quote from the filing); analyst estimates, price targets,
   ratings and the next earnings date.
-- **Watchlist**, **search** by ticker or company name, and **alerts** checked on the server
+- **Watchlist** with 1-month trend lines, a today's up/down summary, sorting (your order, % change,
+  name, price), drag or keyboard reordering, and collapsible groups (⋯ menu on each row).
+- **Search** by ticker or company name, and **alerts** checked on the server
   (price above/below, near a key level, level breakout) with browser and push notifications.
 - **EN / TH** switch, **dark / light** theme, keyboard shortcuts, phone layout, installable app (PWA).
 - Every number shows its **source and last-updated time**; missing data shows "—" with a note.
@@ -97,7 +99,7 @@ Other settings in `server/.env` (all optional, empty = default):
 |---|---|---|
 | **Finnhub** | 60 calls/min; 1 live WebSocket per key (up to 50 symbols). Executives and candles are paid. | One shared upstream WebSocket for all browser tabs; quotes cached 5 s; company metrics cached 12 h. Before the open, its quote still shows yesterday's close — the app uses live trades instead. |
 | **Twelve Data** | 8 calls/min, 800 calls/day | The server refuses a 9th call within a minute (charts show "rate limit — retrying automatically"); intraday charts cached 1 min while trading, 30 min when idle. Flipping quickly through ranges and Compare symbols can hit the limit; it clears within a minute. |
-| **FMP** | 250 calls/day; earnings history limited to 5 rows; intraday charts and earnings-call transcripts are paid | One 5-year daily download per stock per hour serves 6M, 1Y and 5Y; profile cached 1 day, analyst data 12 h. Earnings markers therefore cover about the last year; dividends cover 5 years. |
+| **FMP** | 250 calls/day; earnings history limited to 5 rows; intraday charts and earnings-call transcripts are paid; **some stocks are not covered at all** (e.g. RKLB, FLNC: only the profile) | One 5-year daily download per stock per hour serves 6M, 1Y and 5Y; profile cached 1 day, analyst data 12 h. Earnings markers therefore cover about the last year; dividends cover 5 years. For stocks the plan doesn't cover, daily charts and trend lines come from Twelve Data and analyst data says "Not included in the free data plan for this stock" (remembered 12 h). When the daily 250 calls are used up, the app stops calling FMP for a while (1 min, doubling up to 30 min) and serves cached data, with daily charts from Twelve Data. |
 | **SEC EDGAR** | Free, no key; fair use ≤ 10 requests/s | Filings list and text cached 12 h; used instead of paid earnings-call transcripts. |
 | **Anthropic** *(optional)* | Pay per use (≈ $2 / $10 per million input / output tokens for Claude Sonnet 5.5) | Summaries cached 15 min per stock and language; each headline tagged once (7 days); guidance cached until the next earnings date. AI results are stored in the database so restarts don't repeat them. |
 
@@ -164,6 +166,10 @@ regenerates it on start.
 
 **Charts say "rate limit — retrying automatically"**
 Twelve Data allows 8 chart requests per minute. Wait a moment; it recovers by itself.
+
+**Volume, analyst data or earnings markers are missing for the whole day**
+The FMP free plan's 250 calls/day are used up (common on days with lots of testing). The app keeps
+showing cached data and resets by itself the next day.
 
 **No system notifications**
 Allow notifications for `localhost` (lock icon in the address bar) and check Windows Focus Assist / Do

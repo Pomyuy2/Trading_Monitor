@@ -1,0 +1,103 @@
+import type { CandleSeries, Range } from '@tm/shared';
+import { describe, expect, it, vi } from 'vitest';
+import { LruCache } from '../cache/cache.js';
+import { KeywordAi } from '../ai/keyword-ai.js';
+import { MockAi } from '../ai/mock-ai.js';
+import type { ProviderRegistry } from '../providers/registry.js';
+import { BaseProvider, ProviderAuthError, RateLimitError, type Capability } from '../providers/types.js';
+import { MarketService, NOT_IN_PLAN } from './market-service.js';
+
+/** A provider whose daily candles either work or are refused by the plan. */
+class FakeDaily extends BaseProvider {
+  protected readonly capabilities = new Set<Capability>(['dailyCandles', 'estimates', 'priceTargets', 'ratings', 'earningsCalendar', 'profile']);
+  calls = 0;
+  constructor(readonly name: string, private readonly refuse: boolean, private readonly error?: Error) {
+    super();
+  }
+  isAvailable() {
+    return true;
+  }
+  async getCandles(symbol: string, range: Range): Promise<CandleSeries> {
+    this.calls++;
+    if (this.error) throw this.error;
+    if (this.refuse) throw new ProviderAuthError(this.name, 402);
+    const candles = Array.from({ length: 40 }, (_, i) => ({ time: 1_790_000_000 + i * 86400, open: 10, high: 11, low: 9, close: 10 + i, volume: 1 }));
+    return { symbol, range, resolution: '1day', candles, meta: { source: this.name, updatedAt: new Date().toISOString() } };
+  }
+  async getEstimates(): Promise<never> {
+    throw new ProviderAuthError(this.name, 402);
+  }
+}
+
+function service(primary: FakeDaily, fallback: FakeDaily | null) {
+  const registry = {
+    for: () => primary,
+    fallbackFor: () => fallback,
+  } as unknown as ProviderRegistry;
+  return new MarketService(registry, new LruCache(), { claude: null, keyword: new KeywordAi(), mock: new MockAi() });
+}
+
+describe('provider fallback (free plan refuses a symbol)', () => {
+  it('serves daily candles from the fallback when the main provider says "not in your plan"', async () => {
+    const fmp = new FakeDaily('FMP', true);
+    const td = new FakeDaily('Twelve Data', false);
+    const s = await service(fmp, td).candles('RKLB', '1Y');
+    expect(s.meta.source).toBe('Twelve Data');
+    expect(s.candles).toHaveLength(40);
+    expect(fmp.calls).toBe(1);
+    expect(td.calls).toBe(1);
+  });
+
+  it('also uses the fallback when the main provider\'s daily call allowance is used up', async () => {
+    const fmp = new FakeDaily('FMP', false, new RateLimitError('FMP', 60_000));
+    const td = new FakeDaily('Twelve Data', false);
+    const s = await service(fmp, td).candles('AAPL', '1Y');
+    expect(s.meta.source).toBe('Twelve Data');
+    expect(fmp.calls).toBe(1); // no inline retry for a long wait
+  });
+
+  it('does not use the fallback for other errors (e.g. provider down)', async () => {
+    const fmp = new FakeDaily('FMP', false, new Error('HTTP 500'));
+    const td = new FakeDaily('Twelve Data', false);
+    await expect(service(fmp, td).candles('AAPL', '1Y')).rejects.toThrow('HTTP 500');
+    expect(td.calls).toBe(0);
+  });
+
+  it('builds sparklines (last ~22 closes) through the same fallback', async () => {
+    const s = await service(new FakeDaily('FMP', true), new FakeDaily('Twelve Data', false)).sparkline('FLNC');
+    expect(s.points).toHaveLength(22);
+    expect(s.points.at(-1)?.close).toBe(49);
+    expect(s.meta.source).toBe('Twelve Data');
+  });
+
+  it('remembers a plan refusal for extra quote stats instead of asking on every refresh', async () => {
+    class QuoteOnly extends FakeDaily {
+      async getQuote(symbol: string) {
+        return { symbol, name: null, exchange: null, currency: 'USD', price: 10, change: 0, changePct: 0, open: null, high: null, low: null, prevClose: 10, volume: null, avgVolume: null, marketCap: null, peTTM: null, week52High: null, week52Low: null, dividendYield: null, ts: Date.now(), marketState: 'open' as const, delayed: false, meta: { source: 'Q', updatedAt: '' } };
+      }
+    }
+    class StatsRefused extends FakeDaily {
+      statsCalls = 0;
+      async getKeyStats(): Promise<never> {
+        this.statsCalls++;
+        throw new ProviderAuthError('FMP', 402);
+      }
+    }
+    const q = new QuoteOnly('Finnhub', false);
+    const fmp = new StatsRefused('FMP', true);
+    const registry = { for: (cap: Capability) => (cap === 'keyStats' ? fmp : q), fallbackFor: () => null } as unknown as ProviderRegistry;
+    const svc = new MarketService(registry, new LruCache(), { claude: null, keyword: new KeywordAi(), mock: new MockAi() });
+    await svc.quote('RKLB', true);
+    await new Promise((r) => setTimeout(r, 10));
+    const again = await svc.quote('RKLB', true);
+    expect(fmp.statsCalls).toBe(1);
+    expect(again.volume).toBeNull();
+  });
+
+  it('marks analyst data the plan does not include, instead of failing silently', async () => {
+    const svc = service(new FakeDaily('FMP', true), null);
+    vi.spyOn(svc as unknown as { guidance: () => unknown }, 'guidance').mockResolvedValue({ guidance: null, status: 'no-source', sources: [] });
+    const insight = await svc.insight('RKLB', 'en');
+    expect(insight.estimates).toMatchObject({ revenueAvg: null, epsAvg: null, meta: { note: NOT_IN_PLAN } });
+  });
+});

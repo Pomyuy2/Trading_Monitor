@@ -145,6 +145,29 @@ app.post<{ Body: { symbol?: string } }>('/api/watchlist', async (req, reply) => 
   return watchlist.add(s);
 });
 
+/** Comma-separated symbols for batch endpoints (max 40, invalid ones dropped). */
+function parseSymbols(raw: string | undefined): string[] {
+  return [...new Set((raw ?? '').split(',').map(normalizeSymbol).filter(isValidSymbol))].slice(0, 40);
+}
+
+app.get<{ Querystring: { symbols?: string } }>('/api/quotes', async (req) => market.quotes(parseSymbols(req.query.symbols)));
+
+app.get<{ Querystring: { symbols?: string } }>('/api/sparklines', async (req) => market.sparklines(parseSymbols(req.query.symbols)));
+
+app.put('/api/watchlist/order', async (req, reply) => {
+  const parsed = z.object({ symbols: z.array(z.string()).max(200) }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid order' });
+  return watchlist.reorder(parsed.data.symbols.map(normalizeSymbol).filter(isValidSymbol));
+});
+
+app.patch<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req, reply) => {
+  const s = parseSymbol(req.params.symbol, reply);
+  if (!s) return;
+  const parsed = z.object({ group: z.string().max(100).nullable() }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid group' });
+  return watchlist.setGroup(s, parsed.data.group);
+});
+
 app.delete<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req, reply) => {
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;

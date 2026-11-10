@@ -311,6 +311,17 @@ export interface LevelsResponse {
 export interface WatchlistItem {
   symbol: string;
   addedAt: string;
+  position: number; // "My order"
+  group: string | null; // optional group name
+}
+
+export const MAX_GROUP_NAME = 24;
+
+/** ~1 month of daily closes for a watchlist trend line. */
+export interface Sparkline {
+  symbol: string;
+  points: { time: number; close: number }[]; // oldest first; daily bars (unix seconds, 00:00 UTC)
+  meta: SourceMeta;
 }
 
 export interface MetaResponse {

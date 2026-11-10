@@ -214,6 +214,8 @@ function AnalystCard({ data, quote }: { data: InsightResponse | null; quote: Quo
   const pt = data?.priceTargets;
   const r = data?.ratings;
   const metas = [e?.meta, pt?.meta, r?.meta, data?.earnings?.meta].filter(Boolean) as SourceMeta[];
+  /** The provider's free plan doesn't include this data for this stock. */
+  const planNote = (m?: SourceMeta) => (m?.note === 'notInPlan' ? t('notInPlan') : undefined);
   // One line per distinct source; use the oldest update time for that source.
   const bySource = new Map<string, SourceMeta>();
   for (const m of metas) {
@@ -233,14 +235,14 @@ function AnalystCard({ data, quote }: { data: InsightResponse | null; quote: Quo
                 {t('revenueEst')}
                 {e?.fiscalYear ? ` · ${t('fiscalYear', { year: String(e.fiscalYear) })}` : ''}
               </dt>
-              <dd className="mt-1 font-mono text-lg">{e?.revenueAvg != null ? fmtCompact(e.revenueAvg, lang, cur) : <Missing />}</dd>
+              <dd className="mt-1 font-mono text-lg">{e?.revenueAvg != null ? fmtCompact(e.revenueAvg, lang, cur) : <Missing note={planNote(e?.meta)} />}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted">
                 {t('epsEst')}
                 {e?.fiscalYear ? ` · ${t('fiscalYear', { year: String(e.fiscalYear) })}` : ''}
               </dt>
-              <dd className="mt-1 font-mono text-lg">{e?.epsAvg != null ? fmtPrice(e.epsAvg, lang, cur) : <Missing />}</dd>
+              <dd className="mt-1 font-mono text-lg">{e?.epsAvg != null ? fmtPrice(e.epsAvg, lang, cur) : <Missing note={planNote(e?.meta)} />}</dd>
             </div>
             {e?.analystCount != null && <p className="col-span-2 -mt-1 text-xs text-muted">{t('analysts', { count: String(e.analystCount) })}</p>}
           </dl>
@@ -250,18 +252,18 @@ function AnalystCard({ data, quote }: { data: InsightResponse | null; quote: Quo
             {pt && pt.low != null && pt.avg != null && pt.high != null ? (
               <TargetBar low={pt.low} avg={pt.avg} high={pt.high} current={quote?.price ?? null} fmt={(n) => fmtPrice(n, lang, cur)} />
             ) : (
-              <div className="mt-1"><Missing /></div>
+              <div className="mt-1"><Missing note={planNote(pt?.meta)} /></div>
             )}
           </div>
 
           <div>
             <h3 className="text-xs text-muted">{t('ratings')}</h3>
-            {r && r.buy != null && r.hold != null && r.sell != null ? <RatingsBar buy={r.buy} hold={r.hold} sell={r.sell} /> : <div className="mt-1"><Missing /></div>}
+            {r && r.buy != null && r.hold != null && r.sell != null ? <RatingsBar buy={r.buy} hold={r.hold} sell={r.sell} /> : <div className="mt-1"><Missing note={planNote(r?.meta)} /></div>}
           </div>
 
           <div className="flex items-baseline justify-between gap-2 border-t border-border pt-3">
             <span className="text-xs text-muted">{t('nextEarnings')}</span>
-            <span className="font-mono text-sm">{data.earnings?.date ? fmtIsoDate(data.earnings.date, lang) : <Missing inline />}</span>
+            <span className="font-mono text-sm">{data.earnings?.date ? fmtIsoDate(data.earnings.date, lang) : <Missing inline note={planNote(data.earnings?.meta)} />}</span>
           </div>
         </div>
       )}

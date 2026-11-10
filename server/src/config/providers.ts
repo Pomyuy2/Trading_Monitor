@@ -24,3 +24,11 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
   earningsHistory: 'fmp', // last 4 reports + next (free plan: 5 rows); Finnhub's free calendar returns only ~2
   dividends: 'fmp', // free SEC filings (8-K earnings release + 10-K MD&A); FMP transcripts are paid
 };
+
+/**
+ * Second choice when the main provider refuses a symbol on the free plan (HTTP 401/402/403).
+ * FMP's free plan doesn't cover every stock (e.g. RKLB, FLNC): daily charts then come from Twelve Data.
+ */
+export const CAPABILITY_FALLBACKS: Partial<Record<Capability, ProviderName>> = {
+  dailyCandles: 'twelvedata',
+};

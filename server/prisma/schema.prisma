@@ -11,8 +11,10 @@ datasource db {
 }
 
 model WatchlistItem {
-  symbol  String   @id
-  addedAt DateTime @default(now())
+  symbol   String   @id
+  addedAt  DateTime @default(now())
+  position Int      @default(0) // "My order" (drag to reorder)
+  group    String? // optional group name, e.g. "Tech"
 }
 
 /// kind: price_above | price_below | near_level | breakout

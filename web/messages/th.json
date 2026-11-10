@@ -169,7 +169,8 @@
     "guidanceOff": "ปิดการดึงประมาณการอยู่: ต้องใช้ AI (Anthropic API key บนเซิร์ฟเวอร์) อ่านเอกสารต้นทางได้ด้านล่าง",
     "guidanceError": "ไม่สามารถดึงประมาณการจากเอกสารได้ในขณะนี้",
     "sourceFilings": "เอกสารต้นทาง (SEC EDGAR)",
-    "opensNewTab": "เปิดในแท็บใหม่"
+    "opensNewTab": "เปิดในแท็บใหม่",
+    "notInPlan": "แผนข้อมูลฟรีไม่รวมข้อมูลนี้สำหรับหุ้นตัวนี้"
   },
   "common": {
     "source": "แหล่งข้อมูล: {source}",
@@ -202,7 +203,30 @@
     "add": "เพิ่ม {symbol} ในรายการเฝ้าดู",
     "remove": "ลบ {symbol} ออกจากรายการเฝ้าดู",
     "addCurrent": "เพิ่ม {symbol}",
-    "inList": "อยู่ในรายการแล้ว"
+    "inList": "อยู่ในรายการแล้ว",
+    "trend": "แนวโน้ม 1 เดือน {change}",
+    "summaryLabel": "วันนี้: ขึ้น {up} ลง {down} ไม่เปลี่ยน {flat}",
+    "avg": "เฉลี่ย",
+    "sortBy": "เรียง",
+    "sort": {
+      "manual": "ลำดับของฉัน",
+      "change": "% เปลี่ยนแปลง (มาก → น้อย)",
+      "name": "ชื่อ (A → Z)",
+      "price": "ราคา (มาก → น้อย)"
+    },
+    "editOrder": "จัดลำดับ",
+    "doneOrder": "เสร็จ",
+    "editHint": "ลากที่จับ หรือโฟกัสที่จับแล้วกดลูกศร ↑ ↓",
+    "moved": "ย้าย {symbol} ไปลำดับที่ {position} จาก {total}",
+    "noGroup": "ไม่มีกลุ่ม",
+    "reorder": "ย้าย {symbol}",
+    "reorderRole": "ที่จับสำหรับลาก",
+    "actions": "ตัวเลือกเพิ่มเติมของ {symbol}",
+    "moveToGroup": "ย้ายไปกลุ่ม",
+    "removeFromGroup": "นำออกจากกลุ่ม",
+    "newGroup": "ชื่อกลุ่มใหม่",
+    "newGroupPlaceholder": "กลุ่มใหม่ เช่น เทค",
+    "addGroup": "เพิ่ม"
   },
   "alert": {
     "title": "การแจ้งเตือน · {symbol}",

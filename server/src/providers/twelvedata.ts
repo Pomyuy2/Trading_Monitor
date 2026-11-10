@@ -4,13 +4,14 @@ import { nyDate } from '../lib/market-time.js';
 import { BaseProvider, NotSupportedError, ProviderAuthError, RateLimitError, type Capability } from './types.js';
 
 /**
- * Twelve Data (https://twelvedata.com): intraday candles for 1H / 1D / 1W / 1M.
+ * Twelve Data (https://twelvedata.com): intraday candles for 1H / 1D / 1W / 1M, and daily /
+ * weekly candles as the fallback for stocks FMP's free plan doesn't cover (6M / 1Y / 5Y).
  * Free "Basic" plan: 800 credits/day, 8/min; regular-hours bars only.
  */
 const BASE = 'https://api.twelvedata.com';
 const PER_MINUTE = 8;
 
-const INTERVAL: Partial<Record<Resolution, string>> = { '1min': '1min', '5min': '5min', '30min': '30min', '1hour': '1h' };
+const INTERVAL: Partial<Record<Resolution, string>> = { '1min': '1min', '5min': '5min', '30min': '30min', '1hour': '1h', '1day': '1day', '1week': '1week' };
 
 /** How many bars to request, and how to trim them, per range. */
 const PLAN: Partial<Record<Range, { outputsize: number; keep: (bars: Candle[]) => Candle[] }>> = {
@@ -19,6 +20,9 @@ const PLAN: Partial<Record<Range, { outputsize: number; keep: (bars: Candle[]) =
   '1D': { outputsize: 100, keep: (b) => (b.length ? b.filter((c) => nyDate(c.time) === nyDate(b[b.length - 1].time)) : b) },
   '1W': { outputsize: 80, keep: (b) => withinDays(b, 7) },
   '1M': { outputsize: 180, keep: (b) => withinDays(b, 30) },
+  '6M': { outputsize: 130, keep: (b) => withinDays(b, 182) },
+  '1Y': { outputsize: 260, keep: (b) => withinDays(b, 365) },
+  '5Y': { outputsize: 265, keep: (b) => withinDays(b, 5 * 365) },
 };
 
 function withinDays(bars: Candle[], days: number) {
@@ -36,7 +40,7 @@ interface TdResponse {
 
 export class TwelveDataProvider extends BaseProvider {
   readonly name = 'Twelve Data';
-  protected readonly capabilities = new Set<Capability>(['intradayCandles']);
+  protected readonly capabilities = new Set<Capability>(['intradayCandles', 'dailyCandles']);
   private recent: number[] = []; // request timestamps in the last minute
 
   constructor(private readonly apiKey: string | undefined) {
@@ -74,14 +78,15 @@ export class TwelveDataProvider extends BaseProvider {
       if (r.code === 429) throw new RateLimitError(this.name, 60_000);
       if (r.code === 401 || r.code === 403) throw new ProviderAuthError(this.name, r.code, r.message);
       if (r.code === 400 || r.code === 404) {
-        return { symbol, range, resolution: res, candles: [], meta: { source: this.name, updatedAt: new Date().toISOString(), note: 'No intraday data for this symbol' } };
+        return { symbol, range, resolution: res, candles: [], meta: { source: this.name, updatedAt: new Date().toISOString(), note: 'No data for this symbol' } };
       }
       throw new Error(`${this.name} error ${r.code ?? ''}`);
     }
 
     const bars: Candle[] = (r.values ?? [])
       .map((v) => ({
-        time: Date.parse(`${v.datetime.replace(' ', 'T')}Z`) / 1000,
+        // intraday: "2026-11-09 14:30:00"; daily / weekly: "2026-11-09" (a calendar date → 00:00 UTC)
+        time: Date.parse(v.datetime.length <= 10 ? `${v.datetime}T00:00:00Z` : `${v.datetime.replace(' ', 'T')}Z`) / 1000,
         open: +v.open,
         high: +v.high,
         low: +v.low,

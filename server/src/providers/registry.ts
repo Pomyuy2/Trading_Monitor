@@ -1,4 +1,4 @@
-import { CAPABILITY_PROVIDERS, type ProviderName } from '../config/providers.js';
+import { CAPABILITY_FALLBACKS, CAPABILITY_PROVIDERS, type ProviderName } from '../config/providers.js';
 import { env } from '../env.js';
 import { FinnhubProvider } from './finnhub.js';
 import { FmpProvider } from './fmp.js';
@@ -33,6 +33,13 @@ export class ProviderRegistry {
   for(cap: Capability): MarketDataProvider {
     const p = this.all[CAPABILITY_PROVIDERS[cap]];
     return p.supports(cap) ? p : this.mock;
+  }
+
+  /** Fallback provider for a capability, if one is configured and usable (else null). */
+  fallbackFor(cap: Capability): MarketDataProvider | null {
+    const name = CAPABILITY_FALLBACKS[cap];
+    const p = name ? this.all[name] : null;
+    return p && p.supports(cap) && p !== this.for(cap) ? p : null;
   }
 
   /** capability → provider name actually in use. */

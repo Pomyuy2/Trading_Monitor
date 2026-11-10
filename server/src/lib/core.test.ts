@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cached, LruCache } from '../cache/cache.js';
 import { ProviderAuthError, RateLimitError, type MarketDataProvider, type Tick } from '../providers/types.js';
 import { RealtimeHub } from '../realtime/hub.js';
-import { getJson } from './http.js';
+import { getJson, rateLimitState, resetRateLimits } from './http.js';
 import { withRateLimitRetry } from './retry.js';
 
 // ---------------------------------------------------------------- range mapping
@@ -95,7 +95,10 @@ describe('cache with stale fallback', () => {
 
 // ---------------------------------------------------------------- HTTP + retry
 describe('provider HTTP errors', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetRateLimits();
+  });
   const respond = (status: number, headers: Record<string, string> = {}) =>
     vi.stubGlobal('fetch', async () => new Response('{}', { status, headers }));
 
@@ -104,6 +107,39 @@ describe('provider HTTP errors', () => {
     const err = (await getJson('P', 'https://x').catch((e) => e)) as RateLimitError;
     expect(err).toBeInstanceOf(RateLimitError);
     expect(err.retryAfterMs).toBe(7000);
+  });
+
+  it('stops calling a provider after "limit reached" and backs off longer each time', async () => {
+    let n = 0;
+    const status = { code: 429 };
+    vi.stubGlobal('fetch', async () => {
+      n++;
+      return new Response('{}', { status: status.code });
+    });
+    const t0 = Date.now();
+    const first = (await getJson('FMP', 'https://x').catch((e) => e)) as RateLimitError;
+    expect(first.retryAfterMs).toBe(60_000);
+    // While blocked: fails at once without a network call, so callers can serve cached data.
+    const again = (await getJson('FMP', 'https://x').catch((e) => e)) as RateLimitError;
+    expect(again).toBeInstanceOf(RateLimitError);
+    expect(n).toBe(1);
+    // Other providers are not affected.
+    status.code = 200;
+    await expect(getJson('Finnhub', 'https://x')).resolves.toEqual({});
+    // After the block ends a new refusal doubles the wait; a normal answer clears it.
+    vi.useFakeTimers({ now: t0 + 61_000, toFake: ['Date'] });
+    try {
+      status.code = 429;
+      const second = (await getJson('FMP', 'https://x').catch((e) => e)) as RateLimitError;
+      expect(second.retryAfterMs).toBe(120_000);
+      expect(rateLimitState('FMP')?.strikes).toBe(2);
+      vi.setSystemTime(t0 + 61_000 + 121_000);
+      status.code = 200;
+      await expect(getJson('FMP', 'https://x')).resolves.toEqual({});
+      expect(rateLimitState('FMP')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('maps 401/402/403 to ProviderAuthError', async () => {

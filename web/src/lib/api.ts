@@ -12,6 +12,7 @@ import type {
   NewsResponse,
   Quote,
   Range,
+  Sparkline,
   SymbolMatch,
   WatchlistItem,
 } from '@tm/shared';
@@ -47,6 +48,18 @@ const noRetryOn404 = {
 /** `detail` adds key stats from a second provider (e.g. volume); only the main symbol needs it. */
 export function useQuote(symbol: string | null, detail = false) {
   return useSWR<Quote>(symbol ? `/api/quote/${enc(symbol)}${detail ? '?detail=1' : ''}` : null, fetchJson, { refreshInterval: 30_000, ...noRetryOn404 });
+}
+
+/** Several quotes in one request (watchlist). */
+export function useQuotes(symbols: string[]) {
+  const key = symbols.length ? `/api/quotes?symbols=${symbols.map(enc).join(',')}` : null;
+  return useSWR<Quote[]>(key, fetchJson, { refreshInterval: 30_000, keepPreviousData: true });
+}
+
+/** ~1 month of daily closes per symbol, for watchlist trend lines (cached 12 h on the server). */
+export function useSparklines(symbols: string[]) {
+  const key = symbols.length ? `/api/sparklines?symbols=${[...symbols].sort().map(enc).join(',')}` : null;
+  return useSWR<Sparkline[]>(key, fetchJson, { revalidateOnFocus: false, refreshInterval: 30 * 60_000, keepPreviousData: true });
 }
 
 export function useCandles(symbol: string | null, range: Range) {
@@ -147,4 +160,33 @@ export function applyAlertUpdate(alert: Alert) {
     const list = cur ?? [];
     return list.some((x) => x.id === alert.id) ? list.map((x) => (x.id === alert.id ? alert : x)) : [alert, ...list];
   }, { revalidate: false });
+}
+
+/** Save "My order" (optimistic). */
+export async function reorderWatchlist(symbols: string[]) {
+  await mutate<WatchlistItem[]>(
+    WATCHLIST_KEY,
+    async () => fetchJson<WatchlistItem[]>(`${WATCHLIST_KEY}/order`, { method: 'PUT', body: JSON.stringify({ symbols }) }),
+    {
+      optimisticData: (cur) => {
+        const list = [...(cur ?? [])];
+        return list.map((i) => ({ ...i, position: symbols.indexOf(i.symbol) === -1 ? i.position + symbols.length : symbols.indexOf(i.symbol) })).sort((x, y) => x.position - y.position);
+      },
+      rollbackOnError: true,
+      revalidate: false,
+    },
+  );
+}
+
+/** Put a symbol in a group (null = no group). */
+export async function setWatchlistGroup(symbol: string, group: string | null) {
+  await mutate<WatchlistItem[]>(
+    WATCHLIST_KEY,
+    async () => fetchJson<WatchlistItem[]>(`${WATCHLIST_KEY}/${enc(symbol)}`, { method: 'PATCH', body: JSON.stringify({ group }) }),
+    {
+      optimisticData: (cur) => (cur ?? []).map((i) => (i.symbol === symbol ? { ...i, group: group?.trim() || null } : i)),
+      rollbackOnError: true,
+      revalidate: false,
+    },
+  );
 }

@@ -15,9 +15,10 @@ import {
   type Sentiment,
   type SentimentMethod,
   type SourceMeta,
+  type Sparkline,
   type SymbolMatch,
 } from '@tm/shared';
-import type { MarketDataProvider } from '../providers/types.js';
+import { ProviderAuthError, RateLimitError, type Capability, type KeyStats, type MarketDataProvider } from '../providers/types.js';
 import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
 import { nyDate } from '../lib/market-time.js';
 import { finalizeGuidance, guidanceTexts, withTexts } from '../ai/guidance.js';
@@ -45,6 +46,36 @@ async function settle<T>(p: Promise<T>): Promise<T | null> {
 }
 
 const MAX_HEADLINES = 20;
+
+/** Run fn; if the provider's plan refuses the symbol, return `empty` marked NOT_IN_PLAN instead of throwing. */
+async function orNotInPlan<T extends object>(source: string, fn: () => Promise<T & { meta: SourceMeta }>, empty: T): Promise<T & { meta: SourceMeta }> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof ProviderAuthError) return { ...empty, meta: { source, updatedAt: new Date().toISOString(), note: NOT_IN_PLAN } };
+    throw err;
+  }
+}
+
+/** Lists the plan doesn't include for this symbol are simply empty (and cached like any result). */
+async function emptyIfNotInPlan<T>(fn: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof ProviderAuthError) return [];
+    throw err;
+  }
+}
+
+/** Marker the UI translates: the provider's free plan doesn't include this data for this symbol. */
+export const NOT_IN_PLAN = 'notInPlan';
+const EMPTY_INSIGHT = {
+  estimates: { fiscalYear: null, revenueAvg: null, epsAvg: null, analystCount: null },
+  priceTargets: { low: null, avg: null, high: null },
+  ratings: { buy: null, hold: null, sell: null },
+  earningsCalendar: { date: null },
+} as const;
+const SPARKLINE_DAYS = 22; // ≈ one month of trading days
 const MIN_RELEVANT = 5;
 
 /** Short brand names that don't appear in the legal company name. */
@@ -95,7 +126,15 @@ export class MarketService {
     if (!detail) return quote;
     const sp = this.providers.for('keyStats');
     if (sp === p) return quote;
-    const stats = await settle(cached(this.cache, `keyStats:${sp.name}:${symbol}`, TTL.keyStats, () => withRateLimitRetry(() => sp.getKeyStats(symbol))));
+    // A plan refusal is remembered (12 h) so we don't ask again on every refresh.
+    const stats = await settle(
+      cached(
+        this.cache,
+        `keyStats:${sp.name}:${symbol}`,
+        (v: KeyStats) => (v.meta.note === NOT_IN_PLAN ? TTL.notInPlan : TTL.keyStats),
+        () => orNotInPlan(sp.name, () => withRateLimitRetry(() => sp.getKeyStats(symbol)), {} as Omit<KeyStats, 'meta'>),
+      ),
+    );
     if (!stats) return quote;
     const merged: Quote = { ...quote };
     let used = false;
@@ -121,9 +160,26 @@ export class MarketService {
           return Date.now() / 1000 - last > 15 * 60 ? TTL.intradayIdle : TTL.intradayCandles;
         }
       : TTL.dailyCandles;
+    const cap = isIntradayRange(range) ? 'intradayCandles' : 'dailyCandles';
     return markStale(
-      await cached(this.cache, `candles:${p.name}:${symbol}:${range}`, ttl, () => withRateLimitRetry(() => p.getCandles(symbol, range))),
+      await cached(this.cache, `candles:${p.name}:${symbol}:${range}`, ttl, () => this.withFallback(cap, (x) => x.getCandles(symbol, range))),
     );
+  }
+
+  /**
+   * Call the capability's provider; if it refuses this symbol on the free plan (401/402/403) or its
+   * call allowance is used up (429), try the configured fallback provider (e.g. FMP → Twelve Data
+   * for daily candles).
+   */
+  private async withFallback<T>(cap: Capability, fn: (p: MarketDataProvider) => Promise<T>): Promise<T> {
+    const p = this.providers.for(cap);
+    try {
+      return await withRateLimitRetry(() => fn(p));
+    } catch (err) {
+      const fb = this.providers.fallbackFor(cap);
+      if (!(err instanceof ProviderAuthError || err instanceof RateLimitError) || !fb) throw err;
+      return withRateLimitRetry(() => fn(fb));
+    }
   }
 
   /**
@@ -131,6 +187,34 @@ export class MarketService {
    * symbol + range + latest candle, so it's recomputed only when new candles arrive; the split into
    * supports / resistances uses the current price on every request.
    */
+  /** Quotes for several symbols at once (watchlist); unknown symbols are skipped. */
+  async quotes(symbols: string[]): Promise<Quote[]> {
+    const out = await Promise.all(symbols.map((s) => settle(this.quote(s))));
+    return out.filter((q): q is Quote => !!q);
+  }
+
+  /**
+   * ~1 month of daily closes for a watchlist trend line. Cached 12 h per symbol so a long
+   * watchlist costs only a couple of daily-candle calls per stock per day.
+   */
+  async sparkline(symbol: string): Promise<Sparkline> {
+    const p = this.providers.for('dailyCandles');
+    const res = await cached(this.cache, `sparkline:${p.name}:${symbol}`, TTL.sparkline, async () => {
+      const s = await this.withFallback('dailyCandles', (x) => x.getCandles(symbol, '6M'));
+      return {
+        symbol,
+        points: s.candles.slice(-SPARKLINE_DAYS).map((c) => ({ time: c.time, close: c.close })),
+        meta: { ...s.meta },
+      } satisfies Sparkline;
+    });
+    return markStale(res);
+  }
+
+  async sparklines(symbols: string[]): Promise<Sparkline[]> {
+    const out = await Promise.all(symbols.map((s) => settle(this.sparkline(s))));
+    return out.filter((x): x is Sparkline => !!x);
+  }
+
   async levels(symbol: string, range: Range): Promise<LevelsResponse> {
     const series = await this.candles(symbol, range);
     const bars = series.candles;
@@ -173,8 +257,8 @@ export class MarketService {
     const ep = this.providers.for('earningsHistory');
     const dp = this.providers.for('dividends');
     const [earnings, dividends] = await Promise.all([
-      settle(cached(this.cache, `events:earnings:${ep.name}:${symbol}`, TTL.events, () => withRateLimitRetry(() => ep.getEarningsHistory(symbol, now - 5 * 366 * 86400_000, now + 100 * 86400_000)))),
-      settle(cached(this.cache, `events:dividends:${dp.name}:${symbol}`, TTL.events, () => withRateLimitRetry(() => dp.getDividends(symbol)))),
+      settle(cached(this.cache, `events:earnings:${ep.name}:${symbol}`, TTL.events, () => emptyIfNotInPlan(() => withRateLimitRetry(() => ep.getEarningsHistory(symbol, now - 5 * 366 * 86400_000, now + 100 * 86400_000))))),
+      settle(cached(this.cache, `events:dividends:${dp.name}:${symbol}`, TTL.events, () => emptyIfNotInPlan(() => withRateLimitRetry(() => dp.getDividends(symbol))))),
     ]);
     const cutoff = new Date(now - 5 * 366 * 86400_000).toISOString().slice(0, 10);
     const meta = (r: { storedAt: number; stale: boolean } | null, source: string): SourceMeta | null =>
@@ -276,7 +360,19 @@ export class MarketService {
     const r = this.providers;
     const c = <T extends { meta: SourceMeta }>(cap: Parameters<ProviderRegistry['for']>[0], ttl: number, fn: (p: ReturnType<ProviderRegistry['for']>) => Promise<T>) => {
       const p = r.for(cap);
-      return settle(cached(this.cache, `${cap}:${p.name}:${symbol}`, ttl, () => withRateLimitRetry(() => fn(p))).then(markStale));
+      return settle(
+        cached(this.cache, `${cap}:${p.name}:${symbol}`, ttl, async () => {
+          try {
+            return await withRateLimitRetry(() => fn(p));
+          } catch (err) {
+            const empty = EMPTY_INSIGHT[cap as keyof typeof EMPTY_INSIGHT];
+            if (err instanceof ProviderAuthError && empty) {
+              return { ...empty, meta: { source: p.name, updatedAt: new Date().toISOString(), note: NOT_IN_PLAN } } as unknown as T;
+            }
+            throw err;
+          }
+        }).then(markStale),
+      );
     };
     const [profile, estimates, priceTargets, ratings, earnings] = await Promise.all([
       c('profile', TTL.profile, (p) => p.getProfile(symbol)),

@@ -14,6 +14,7 @@ export const PREF_COOKIE = {
   levels: 'tm_levels',
   pivots: 'tm_pivots',
   theme: 'tm_theme',
+  wlSort: 'tm_wlsort',
   lang: 'NEXT_LOCALE',
 } as const;
 export type PrefKey = keyof typeof PREF_COOKIE;

@@ -8,7 +8,9 @@ export const TTL = {
   intradayCandles: 1 * MIN,
   intradayIdle: 30 * MIN, // intraday candles when the market isn't trading
   dailyCandles: 1 * HOUR,
+  sparkline: 12 * HOUR, // watchlist trend lines (daily closes); today's point comes from the live price
   keyStats: 5 * MIN,
+  notInPlan: 12 * HOUR, // remember 'not in your free plan' answers so we don't ask again on every refresh
   news: 5 * MIN,
   newsSummary: 15 * MIN,
   levels: 24 * HOUR, // keyed by the latest candle, so new candles trigger a recompute anyway

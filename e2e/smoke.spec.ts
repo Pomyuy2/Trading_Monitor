@@ -126,6 +126,7 @@ test.describe('search, watchlist, compare', () => {
     await page.getByRole('button', { name: 'Add AMD to watchlist' }).click();
     const row = page.getByRole('link', { name: /^AMD/ });
     await expect(row).toBeVisible();
+    await page.getByRole('button', { name: 'More actions for AMD' }).first().click();
     await page.getByRole('button', { name: 'Remove AMD from watchlist' }).click();
     await expect(row).toHaveCount(0);
   });
@@ -236,5 +237,93 @@ test.describe('installable app', () => {
     await open(page);
     const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL);
     expect(sw).toMatch(/\/sw\.js$/);
+  });
+});
+
+// ------------------------------------------------------------------ Phase 8: watchlist upgrades
+const API = 'http://localhost:4100/api';
+const SHOTS = process.env.SHOTS; // optional folder for screenshots
+
+const watchlist = (page: Page) => page.locator('section[aria-labelledby="watchlist-title"]').filter({ visible: true });
+const wlSymbols = (page: Page) =>
+  watchlist(page).locator('li[data-symbol]').evaluateAll((els) => els.map((el) => el.getAttribute('data-symbol')!));
+
+test.describe('watchlist upgrades', () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 0) < 1024, 'desktop sidebar');
+
+  test('shows a summary row and a 1-month trend line for each stock', async ({ page }) => {
+    await open(page);
+    const wl = watchlist(page);
+    await expect(wl.getByLabel(/^Today: \d+ up, \d+ down, \d+ unchanged$/)).toBeVisible();
+    const rows = await wlSymbols(page);
+    expect(rows.length).toBeGreaterThan(3);
+    await expect(wl.getByRole('img', { name: /^1-month trend [+−±]/ })).toHaveCount(rows.length);
+    if (SHOTS) await wl.screenshot({ path: `${SHOTS}/p8-watchlist.png` });
+  });
+
+  test('sorting by name is applied and remembered', async ({ page }) => {
+    await open(page);
+    await watchlist(page).getByLabel('Sort').selectOption('name');
+    const sorted = await wlSymbols(page);
+    expect(sorted).toEqual([...sorted].sort());
+    await page.reload();
+    await expect(watchlist(page).getByLabel('Sort')).toHaveValue('name');
+    await watchlist(page).getByLabel('Sort').selectOption('manual');
+  });
+
+  test('reorder with the keyboard and by dragging; the order is saved', async ({ page, request }) => {
+    await open(page);
+    const before = await wlSymbols(page);
+    const wl = watchlist(page);
+    await wl.getByRole('button', { name: 'Edit order' }).click();
+    // keyboard: move the 2nd stock up
+    await wl.getByRole('button', { name: `Move ${before[1]}` }).focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByText(`${before[1]} moved to position 1 of`)).toBeAttached();
+    await expect.poll(() => wlSymbols(page)).toEqual([before[1], before[0], ...before.slice(2)]);
+    // drag: the 4th stock to the top
+    const handle = wl.getByRole('button', { name: `Move ${before[3]}` });
+    const top = (await wl.locator('li').first().boundingBox())!;
+    const h = (await handle.boundingBox())!;
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2, top.y + 4, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(() => wlSymbols(page)).toEqual([before[3], before[1], before[0], before[2], ...before.slice(4)]);
+    if (SHOTS) await wl.screenshot({ path: `${SHOTS}/p8-edit-order.png` });
+    await wl.getByRole('button', { name: 'Done' }).click();
+    // saved on the server
+    await page.reload();
+    await expect.poll(() => wlSymbols(page)).toEqual([before[3], before[1], before[0], before[2], ...before.slice(4)]);
+    await request.put(`${API}/watchlist/order`, { data: { symbols: before } }); // restore
+  });
+
+  test('groups: create, collapse, and remove from group', async ({ page }) => {
+    await open(page);
+    const wl = watchlist(page);
+    const [first, second] = await wlSymbols(page);
+    for (const s of [first, second]) {
+      await wl.getByRole('button', { name: `More actions for ${s}` }).click();
+      const menu = page.getByRole('dialog', { name: `More actions for ${s}` });
+      if (s === first) {
+        await menu.getByLabel('New group name').fill('Tech');
+        await menu.getByRole('button', { name: 'Add', exact: true }).click();
+      } else {
+        await menu.getByRole('button', { name: 'Tech' }).click();
+      }
+    }
+    const header = wl.getByRole('button', { name: /^Tech 2/ });
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(wl.getByRole('button', { name: /^No group/ })).toBeVisible();
+    if (SHOTS) await wl.screenshot({ path: `${SHOTS}/p8-groups.png` });
+    await header.click();
+    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    await expect(wl.getByRole('link', { name: new RegExp(`^${first}`) })).toHaveCount(0);
+    await header.click();
+    for (const s of [first, second]) {
+      await wl.getByRole('button', { name: `More actions for ${s}` }).click();
+      await page.getByRole('dialog', { name: `More actions for ${s}` }).getByRole('button', { name: 'Remove from group' }).click();
+    }
+    await expect(wl.getByRole('button', { name: /^Tech/ })).toHaveCount(0);
   });
 });

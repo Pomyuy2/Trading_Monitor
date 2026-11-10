@@ -169,7 +169,8 @@
     "guidanceOff": "Guidance extraction is off: it needs AI (an Anthropic API key on the server). You can read the source filings below.",
     "guidanceError": "Couldn't extract guidance from the filings right now.",
     "sourceFilings": "Source filings (SEC EDGAR)",
-    "opensNewTab": "opens in a new tab"
+    "opensNewTab": "opens in a new tab",
+    "notInPlan": "Not included in the free data plan for this stock"
   },
   "common": {
     "source": "Source: {source}",
@@ -202,7 +203,30 @@
     "add": "Add {symbol} to watchlist",
     "remove": "Remove {symbol} from watchlist",
     "addCurrent": "Add {symbol}",
-    "inList": "In watchlist"
+    "inList": "In watchlist",
+    "trend": "1-month trend {change}",
+    "summaryLabel": "Today: {up} up, {down} down, {flat} unchanged",
+    "avg": "Avg",
+    "sortBy": "Sort",
+    "sort": {
+      "manual": "My order",
+      "change": "% change (high → low)",
+      "name": "Name (A → Z)",
+      "price": "Price (high → low)"
+    },
+    "editOrder": "Edit order",
+    "doneOrder": "Done",
+    "editHint": "Drag the handle, or focus it and use the ↑ ↓ arrow keys.",
+    "moved": "{symbol} moved to position {position} of {total}",
+    "noGroup": "No group",
+    "reorder": "Move {symbol}",
+    "reorderRole": "drag handle",
+    "actions": "More actions for {symbol}",
+    "moveToGroup": "Move to group",
+    "removeFromGroup": "Remove from group",
+    "newGroup": "New group name",
+    "newGroupPlaceholder": "New group, e.g. Tech",
+    "addGroup": "Add"
   },
   "alert": {
     "title": "Alerts · {symbol}",
