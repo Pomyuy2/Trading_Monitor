@@ -5,9 +5,15 @@
   "scripts": {
     "dev": "pnpm --parallel --filter server --filter web dev",
     "build": "pnpm --filter web build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter server test",
+    "test:e2e": "playwright test",
+    "test:all": "pnpm test && pnpm test:e2e"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
   }
 }

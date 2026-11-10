@@ -1,0 +1,240 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * Smoke test: the whole app on demo data (MockProvider), desktop + phone.
+ * Each test starts from a clean browser (no cookies), on its own demo server + database.
+ */
+
+const isPhone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 1024;
+
+async function open(page: Page, symbol = 'AAPL') {
+  await page.goto(`/stock/${symbol}`);
+  await expect(page.locator('#price-title')).toHaveText(symbol);
+  await expect(page.locator('div[role=img][aria-label^="Price chart"]')).toBeVisible();
+}
+
+test.describe('dashboard', () => {
+  test('every section renders with demo data, and no console errors', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    await open(page);
+
+    // price header + status bar + footer
+    await expect(page.locator('section', { has: page.locator('#price-title') })).toContainText('Apple Inc.');
+    await expect(page.getByText(/Source: Mock/).first()).toBeVisible();
+    await expect(page.getByText('US market:')).toBeVisible();
+    await expect(page.getByText(/Data from .*Mock/)).toBeVisible();
+    await expect(page.getByRole('note').filter({ hasText: /demo|mock/i })).toBeVisible();
+
+    // chart + levels
+    await expect(page.getByText(/Change over 1 day/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Key levels' })).toBeVisible();
+    await expect(page.getByText('Pivot points', { exact: false })).toBeVisible();
+
+    if (isPhone(page)) {
+      // phone: one panel at a time behind tabs
+      await expect(page.getByRole('tab', { name: 'News' })).toHaveAttribute('aria-selected', 'true');
+      await page.getByRole('tab', { name: 'Insight' }).click();
+      await expect(page.getByRole('heading', { name: 'Leadership & profile' })).toBeVisible();
+      await page.getByRole('tab', { name: 'Stats' }).click();
+      await expect(page.getByRole('heading', { name: 'Key stats' })).toBeVisible();
+    } else {
+      await expect(page.getByRole('heading', { name: 'Watchlist' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'News' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Key stats' })).toBeVisible();
+      await expect(page.getByText('Market cap')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Leadership & profile' })).toBeVisible();
+      await expect(page.getByText('Tim Cook')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Next-year plan & guidance' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Analyst expectations' })).toBeVisible();
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('range buttons change the chart', async ({ page }) => {
+    await open(page);
+    await expect(page.getByText('5-min candles', { exact: true })).toBeVisible({ visible: !isPhone(page) });
+    for (const [range, label, size] of [
+      ['1Y', '1 year', 'Daily candles'],
+      ['5Y', '5 years', 'Weekly candles'],
+      ['1H', '1 hour', '1-min candles'],
+    ] as const) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('div[role=img][aria-label^="Price chart"]')).toHaveAttribute('aria-label', new RegExp(label));
+      if (!isPhone(page)) await expect(page.getByText(size, { exact: true })).toBeVisible();
+      void range;
+    }
+  });
+
+  test('layout has no horizontal scroll and every button has a name', async ({ page }) => {
+    await open(page);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(overflow).toBe(false);
+    const unnamed = await page.$$eval('button', (bs) =>
+      bs.filter((b) => b.offsetParent !== null && !(b.getAttribute('aria-label') || b.textContent?.trim())).map((b) => b.outerHTML.slice(0, 80)),
+    );
+    expect(unnamed).toEqual([]);
+  });
+});
+
+test.describe('preferences', () => {
+  test('language switch translates the UI and is remembered', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'TH', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+    await expect(page.getByText('ตลาดสหรัฐฯ:')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  });
+
+  test('light theme toggle is remembered after reload', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Switch to light theme' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light'); // rendered by the server from the cookie
+    await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  });
+
+  test('the chart range and last symbol are restored', async ({ page }) => {
+    await open(page, 'MSFT');
+    await page.getByRole('button', { name: '1 month', exact: true }).click();
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/stock\/MSFT$/);
+    await expect(page.getByRole('button', { name: '1 month', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+test.describe('search, watchlist, compare', () => {
+  test('search by company name opens the stock', async ({ page }) => {
+    await open(page);
+    const search = page.getByRole('combobox', { name: 'Search ticker or company' });
+    await search.fill('micro');
+    await expect(page.getByRole('option', { name: /MSFT/ })).toBeVisible();
+    await search.press('Enter');
+    await expect(page).toHaveURL(/\/stock\/MSFT$/);
+  });
+
+  test('add and remove a watchlist symbol', async ({ page }) => {
+    test.skip(isPhone(page), 'desktop sidebar');
+    await open(page, 'AMD');
+    await page.getByRole('button', { name: 'Add AMD to watchlist' }).click();
+    const row = page.getByRole('link', { name: /^AMD/ });
+    await expect(row).toBeVisible();
+    await page.getByRole('button', { name: 'Remove AMD from watchlist' }).click();
+    await expect(row).toHaveCount(0);
+  });
+
+  test('compare with SPY and MSFT, then remove one', async ({ page }) => {
+    test.skip(isPhone(page), 'checked on desktop');
+    await open(page);
+    await page.getByRole('button', { name: /^Compare/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Compare AAPL with/ });
+    await dialog.getByRole('button', { name: 'Compare with SPY' }).click();
+    await expect(dialog).toContainText('1 of 2 added'); // stays open until both slots are used
+    await dialog.getByRole('button', { name: 'Compare with MSFT' }).click();
+    await expect(dialog).toBeHidden();
+    const legend = page.getByRole('list', { name: 'Compared symbols' });
+    await expect(legend).toContainText('SPY');
+    await expect(legend).toContainText('MSFT');
+    await expect(page.getByRole('button', { name: /^Compare/ })).toContainText('2/2');
+    await page.getByRole('button', { name: 'Stop comparing SPY' }).click();
+    await expect(legend).not.toContainText('SPY');
+  });
+});
+
+test.describe('chart details', () => {
+  test('crosshair tooltip shows OHLC, volume and change', async ({ page }) => {
+    test.skip(isPhone(page), 'mouse hover');
+    await open(page);
+    const box = (await page.locator('div[role=img][aria-label^="Price chart"]').boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.4);
+    await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.4);
+    const tip = page.getByRole('status').filter({ hasText: 'Volume' });
+    await expect(tip).toContainText('Open');
+    await expect(tip).toContainText('Close');
+    await expect(tip).toContainText('Change');
+  });
+
+  test('keyboard shortcuts work, but not while typing', async ({ page }) => {
+    test.skip(isPhone(page), 'keyboard');
+    await open(page);
+    const search = page.getByRole('combobox', { name: 'Search ticker or company' });
+    await search.click();
+    await search.press('3');
+    await expect(page.getByRole('button', { name: '1 week', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await search.press('Escape');
+    await page.locator('#price-title').click(); // move focus out of the input
+    await page.keyboard.press('3');
+    await expect(page.getByRole('button', { name: '1 week', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const levels = page.getByRole('button', { name: 'Levels', exact: true });
+    const before = await levels.getAttribute('aria-pressed');
+    await page.keyboard.press('l');
+    await expect(levels).not.toHaveAttribute('aria-pressed', before!);
+    await page.keyboard.press('?');
+    await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('/');
+    await expect(search).toBeFocused();
+  });
+});
+
+test.describe('alerts', () => {
+  test('a price alert fires and shows a notification in the app', async ({ page, request }) => {
+    await open(page);
+    // Demo prices move every 250 ms: set one alert just above and one just below — one fires quickly.
+    // The quote is cached for a few seconds while demo prices keep moving, so a target can already be on
+    // the wrong side (400) — retry with a fresh price.
+    for (const [kind, offset] of [['price_above', 0.02], ['price_below', -0.02]] as const) {
+      let status = 0;
+      for (let attempt = 0; attempt < 6 && status !== 201; attempt++) {
+        const q = await (await request.get('http://localhost:4100/api/quote/AAPL')).json();
+        const r = await request.post('http://localhost:4100/api/alerts', { data: { symbol: 'AAPL', kind, targetPrice: +(q.price + offset * (attempt + 1)).toFixed(2) } });
+        status = r.status();
+        if (status !== 201) await page.waitForTimeout(1000);
+      }
+      expect(status).toBe(201);
+    }
+    await expect(page.getByRole('status').filter({ hasText: 'AAPL alert' })).toBeVisible({ timeout: 45_000 });
+    // clean up for the next tests
+    for (const a of await (await request.get('http://localhost:4100/api/alerts')).json()) await request.delete(`http://localhost:4100/api/alerts/${a.id}`);
+  });
+
+  test('rejects a target on the wrong side of the price', async ({ request }) => {
+    const q = await (await request.get('http://localhost:4100/api/quote/AAPL')).json();
+    const r = await request.post('http://localhost:4100/api/alerts', { data: { symbol: 'AAPL', kind: 'price_above', targetPrice: +(q.price * 0.5).toFixed(2) } });
+    expect(r.status()).toBe(400);
+  });
+});
+
+test.describe('failures', () => {
+  test('explains when the data server is unreachable, and recovers by itself', async ({ page }) => {
+    await open(page);
+    await page.route('**/api/health', (r) => r.fulfill({ status: 500, body: 'Internal Server Error' }));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.getByRole('alert').filter({ hasText: 'Data server not reachable' })).toBeVisible({ timeout: 25_000 });
+    await page.unroute('**/api/health');
+    await expect(page.getByRole('alert').filter({ hasText: 'Data server not reachable' })).toHaveCount(0, { timeout: 20_000 });
+  });
+
+  test('unknown symbol shows a clear message', async ({ page }) => {
+    await page.goto('/stock/ZZZZQ');
+    await expect(page.getByText('Symbol not found')).toBeVisible();
+  });
+});
+
+test.describe('installable app', () => {
+  test('serves a manifest, icons and a service worker', async ({ page, request }) => {
+    const m = await (await request.get('/manifest.webmanifest')).json();
+    expect(m).toMatchObject({ name: 'Trading Monitor', display: 'standalone' });
+    for (const icon of m.icons) expect((await request.get(icon.src)).headers()['content-type']).toContain('image/png');
+    await open(page);
+    const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL);
+    expect(sw).toMatch(/\/sw\.js$/);
+  });
+});

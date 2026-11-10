@@ -11,11 +11,18 @@ import { fetchJson } from '@/lib/api';
  * - the data server (Fastify, port 4000) is unreachable — e.g. it crashed or `pnpm dev` isn't running
  * When the server comes back, every section is reloaded automatically.
  */
+export const HEALTH_KEY = '/api/health';
+
+/** A section that can't reach the server asks for an immediate health re-check (shows the banner sooner). */
+export function reportUnreachable() {
+  void mutate(HEALTH_KEY);
+}
+
 export function ConnectionBanner() {
   const t = useTranslations('connection');
   const [online, setOnline] = useState(true);
-  const { error, data } = useSWR<{ ok: boolean }>('/api/health', fetchJson, {
-    refreshInterval: (latest) => (latest ? 30_000 : 5_000),
+  const { error } = useSWR<{ ok: boolean }>(HEALTH_KEY, fetchJson, {
+    refreshInterval: 10_000,
     errorRetryInterval: 5_000,
     errorRetryCount: Infinity,
     revalidateOnFocus: true,
@@ -34,14 +41,15 @@ export function ConnectionBanner() {
     };
   }, []);
 
-  const down = !!error && !data;
+  // SWR keeps the last good `data` after a failed check, so the latest `error` is what tells us it's down.
+  const down = !!error;
   useEffect(() => {
     if (down) wasDown.current = true;
-    else if (wasDown.current && data) {
+    else if (wasDown.current) {
       wasDown.current = false;
       void mutate(() => true); // server is back: reload every section
     }
-  }, [down, data]);
+  }, [down]);
 
   if (!online) {
     return (

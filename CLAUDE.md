@@ -19,7 +19,7 @@ phases or features. This file records what has been built, the decisions behind 
   `th-TH-u-ca-gregory` (Western years).
 - The user works on two PCs and syncs through GitHub. The SQLite database is per-PC (not in git).
 
-## Status (as of 2026-11-06)
+## Status (as of 2026-11-10)
 
 | Phase | State |
 |---|---|
@@ -30,7 +30,9 @@ phases or features. This file records what has been built, the decisions behind 
 | 4 Company insight | done — guidance extraction needs the Anthropic key; without it the card links the SEC filings |
 | 5 Watchlist, search, alerts (+ level alerts) | done |
 | 5.5 Comfort features | done (prefs, crosshair tooltip, market status bar, E/D markers, compare ×2 + SPY, light theme, shortcuts, PWA + push) |
-| **6 Polish** | **next**: loading/error-state pass, unit tests for provider adapters (recorded responses) + range mapping, Playwright smoke test (mock data), full README (setup, API keys, free-plan limits) |
+| 6 Polish | done: error states by cause + connection/offline banner, provider adapter tests on recorded responses, Playwright smoke test (desktop + phone, demo data), full README |
+
+All phases in `trading-monitor-prompt.md` are complete. Further work only if the user asks (see open items).
 
 Open items / not yet verified:
 - Claude features (news summary, AI sentiment, guidance extraction + Thai translation) are built and
@@ -49,7 +51,8 @@ npm i -g pnpm@10          # corepack enable fails on Windows (Program Files is r
 pnpm install              # Node >= 20 (developed on Node 24)
 cp server/.env.example server/.env   # then add keys
 pnpm dev                  # web http://localhost:3000, server http://localhost:4000
-pnpm --filter server test # vitest, 58 tests
+pnpm test                 # vitest: 106 unit/integration tests, no network
+pnpm test:e2e             # Playwright smoke test (28 tests), own ports 3100/4100 + own DB
 cd server && npx tsc --noEmit ; cd ../web && npx tsc --noEmit
 ```
 
@@ -115,11 +118,21 @@ New migration: `cd server && npx prisma migrate dev --name <name>` (stop the dev
 - Live candle updates step from the last bar's own start time (provider bar alignment varies).
 - 1D "change" is measured from the previous close; compare mode uses the first candle's close for all
   lines (same as the % axis).
+- `.env` values copied empty from `.env.example` must fall back to defaults (`server/src/env.ts` treats blank as
+  unset; `env.test.ts` guards this) — an empty `VAPID_SUBJECT` used to crash startup.
+- `ConnectionBanner`: SWR keeps the last good `data` after a failed check, so use `error` alone to decide
+  "server down". Every server capability needs an `app.mockSections.<capability>` label in en/th.
 - News from Finnhub includes market-wide stories; the service keeps articles that mention the ticker
   or company name (falls back to all if fewer than 5).
 
-## Verifying UI changes
+## Verifying changes
 
-Previous sessions drove headless Chrome over the DevTools protocol to screenshot desktop (1440 px) and
-phone (390 px) layouts in EN and TH, check for console errors and horizontal overflow, simulate hovers,
-and run Chrome's installability check. Phase 6 should turn this into a committed Playwright smoke test.
+- `pnpm test` — unit/integration tests. Provider adapters are tested against recorded real responses in
+  `server/test/fixtures/` (fetch is stubbed; unknown URLs throw). Re-record only if a provider changes its
+  format (keep fixtures trimmed and key-free).
+- `pnpm test:e2e` — `e2e/smoke.spec.ts`, desktop (1440 px) + phone (390 px). `playwright.config.ts` starts
+  its own server (`server/scripts/e2e-server.ts`: blank keys → demo data, port 4100, fresh `server/data/e2e.db`
+  via `TM_DATABASE_URL`) and `next dev -p 3100` with `NEXT_DIST_DIR=.next-e2e`, so it runs alongside the
+  user's `pnpm dev` without touching their data. Uses installed Google Chrome (`PW_CHANNEL` to change).
+  It already caught real bugs (missing i18n keys, banner logic) — run it after UI changes.
+- For visual checks, screenshots of desktop and phone in EN and TH are still worth taking and showing.

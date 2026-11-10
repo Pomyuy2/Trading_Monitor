@@ -7,6 +7,8 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 
 const config: NextConfig = {
+  // The Playwright smoke test runs its own next dev; a separate folder avoids clashing with yours.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   transpilePackages: ['@tm/shared'],
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${API_URL}/api/:path*` }];

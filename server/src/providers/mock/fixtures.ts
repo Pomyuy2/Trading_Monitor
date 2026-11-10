@@ -352,6 +352,16 @@ export const COMPANIES: MockCompany[] = [
     employees: null,
     website: 'https://www.netflix.com',
   }, { fiscalYear: 2027, revenueAvg: 51_200_000_000, epsAvg: null, analystCount: 38 }, { low: 85, avg: 135, high: 160 }, null, null),
+  // ETF used as the market benchmark in Compare (no company data — shown as "—").
+  { ...partial('SPY', 'SPDR S&P 500 ETF Trust', 676.3, 672.9, 0.011, 1.9, 0.92e9, 72_000_000, null, 689.7, 508.46, 1.12, {
+    description: 'Exchange-traded fund that tracks the S&P 500 index of large US companies.',
+    ceo: null,
+    cfo: null,
+    hq: null,
+    founded: 1993,
+    employees: null,
+    website: null,
+  }, null, null, null, null), exchange: 'NYSE Arca', type: 'ETP' },
 ];
 
 function partial(

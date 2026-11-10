@@ -17,7 +17,9 @@
       "priceTargets": "analyst data",
       "ratings": "analyst data",
       "earningsCalendar": "analyst data",
-      "transcripts": "guidance"
+      "transcripts": "guidance",
+      "earningsHistory": "chart markers (earnings)",
+      "dividends": "chart markers (dividends)"
     }
   },
   "header": {

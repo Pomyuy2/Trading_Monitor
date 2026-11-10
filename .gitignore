@@ -11,3 +11,5 @@ playwright-report
 test-results
 *.tsbuildinfo
 next-env.d.ts
+.next-e2e
+blob-report

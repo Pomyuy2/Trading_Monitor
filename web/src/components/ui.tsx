@@ -2,8 +2,9 @@
 
 import type { Lang, SourceMeta } from '@tm/shared';
 import { useLocale, useTranslations } from 'next-intl';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
+import { reportUnreachable } from './ConnectionBanner';
 import { DASH, direction, fmtSigned, fmtSignedPct, fmtStamp } from '@/lib/format';
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -104,6 +105,9 @@ export function errorKind(error: unknown): 'rateLimited' | 'notFound' | 'unreach
 export function ErrorState({ onRetry, message, error }: { onRetry?: () => void; message?: string; error?: unknown }) {
   const t = useTranslations('common');
   const kind = errorKind(error);
+  useEffect(() => {
+    if (kind === 'unreachable') reportUnreachable();
+  }, [kind]);
   const text = message ?? (kind === 'generic' ? t('loadError') : t(`errors.${kind}`));
   return (
     <div role="alert" className="flex flex-col items-start gap-2 text-sm text-muted">
