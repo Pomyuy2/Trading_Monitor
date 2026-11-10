@@ -38,7 +38,7 @@ export function Watchlist({ current, onNavigate }: { current: string; onNavigate
       </header>
       {error ? (
         <div className="p-4">
-          <ErrorState onRetry={() => mutate()} />
+          <ErrorState error={error} onRetry={() => mutate()} />
         </div>
       ) : isLoading ? (
         <ul className="space-y-2 p-3">{Array.from({ length: 5 }, (_, i) => <li key={i}><Skeleton className="h-12" /></li>)}</ul>

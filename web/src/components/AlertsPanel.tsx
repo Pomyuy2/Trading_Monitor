@@ -23,7 +23,7 @@ export function AlertsPanel({ onNavigate }: { onNavigate?: () => void }) {
         {data && <span className="text-xs text-muted">{t('activeCount', { count: data.filter((a) => a.status === 'active').length })}</span>}
       </header>
       {error ? (
-        <div className="p-4"><ErrorState onRetry={() => mutate()} /></div>
+        <div className="p-4"><ErrorState error={error} onRetry={() => mutate()} /></div>
       ) : isLoading ? (
         <div className="space-y-2 p-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div>
       ) : list.length === 0 ? (

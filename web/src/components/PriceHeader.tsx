@@ -31,7 +31,7 @@ export function PriceHeader({ symbol, quote, error, streaming, onRetry, compareC
       <section className="rounded-xl border border-border bg-panel p-4">
         <h1 className="font-mono text-2xl font-semibold">{symbol}</h1>
         <div className="mt-2">
-          <ErrorState message={notFound ? t('price.notFound') : undefined} onRetry={notFound ? undefined : onRetry} />
+          <ErrorState error={error} message={notFound ? t('price.notFound') : undefined} onRetry={notFound ? undefined : onRetry} />
         </div>
       </section>
     );

@@ -3,6 +3,7 @@
 import type { Lang, SourceMeta } from '@tm/shared';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
+import { ApiError } from '@/lib/api';
 import { DASH, direction, fmtSigned, fmtSignedPct, fmtStamp } from '@/lib/format';
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -86,11 +87,28 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cx('skeleton', className)} />;
 }
 
-export function ErrorState({ onRetry, message }: { onRetry?: () => void; message?: string }) {
+/** Which kind of failure an error is, for a specific message. */
+export function errorKind(error: unknown): 'rateLimited' | 'notFound' | 'unreachable' | 'provider' | 'generic' {
+  if (error instanceof ApiError) {
+    if (error.status === 503 || error.status === 429) return 'rateLimited';
+    if (error.status === 404) return 'notFound';
+    // Our server never answers a bare 500; that's the Next.js proxy failing to reach it.
+    if (error.status === 500) return 'unreachable';
+    if (error.status === 502) return 'provider';
+    return 'generic';
+  }
+  if (error instanceof TypeError) return 'unreachable'; // fetch() network failure
+  return 'generic';
+}
+
+export function ErrorState({ onRetry, message, error }: { onRetry?: () => void; message?: string; error?: unknown }) {
   const t = useTranslations('common');
+  const kind = errorKind(error);
+  const text = message ?? (kind === 'generic' ? t('loadError') : t(`errors.${kind}`));
   return (
     <div role="alert" className="flex flex-col items-start gap-2 text-sm text-muted">
-      <p>{message ?? t('loadError')}</p>
+      <p>{text}</p>
+      {kind === 'rateLimited' && <p className="text-xs">{t('errors.autoRetry')}</p>}
       {onRetry && (
         <button type="button" onClick={onRetry} className="min-h-11 rounded-md border border-border px-3 text-text hover:bg-panel-2">
           {t('retry')}

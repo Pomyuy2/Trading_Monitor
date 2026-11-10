@@ -33,7 +33,7 @@ export function NewsCard({ symbol }: { symbol: string }) {
       }
     >
       {error && !data ? (
-        <ErrorState onRetry={() => mutate()} />
+        <ErrorState error={error} onRetry={() => mutate()} />
       ) : isLoading || !data ? (
         <div className="space-y-3">
           <Skeleton className="h-24" />

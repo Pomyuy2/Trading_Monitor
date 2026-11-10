@@ -9,6 +9,7 @@ import { useLiveQuote } from '@/lib/use-live-quote';
 import { AlertCenter } from './AlertCenter';
 import { AlertsPanel } from './AlertsPanel';
 import { ChartCard } from './ChartCard';
+import { ConnectionBanner } from './ConnectionBanner';
 import { AlertDialog, CompareDialog, Modal, ShortcutsDialog, type AlertPreset } from './Dialogs';
 import { Header } from './Header';
 import { InsightCards } from './InsightCards';
@@ -110,6 +111,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-button focus:px-3 focus:py-2 focus:text-white">
         {t('app.skipToContent')}
       </a>
+      <ConnectionBanner />
       <MockBanner />
       <Header onOpenWatchlist={() => setDialog('watchlist')} />
       <MarketStatusBar />

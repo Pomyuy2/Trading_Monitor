@@ -188,7 +188,7 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
 
       <div className="relative order-1 px-1 pt-2 lg:order-none">
         {error && !series ? (
-          <div className="grid h-[320px] place-items-center"><ErrorState onRetry={() => mutate()} /></div>
+          <div className="grid h-[320px] place-items-center"><ErrorState error={error} onRetry={() => mutate()} /></div>
         ) : !series && isLoading ? (
           <Skeleton className="mx-3 h-[320px] sm:h-[380px] xl:h-[420px]" />
         ) : series && candles.length === 0 ? (

@@ -1,0 +1,65 @@
+{
+ "count": 10,
+ "result": [
+  {
+   "description": "Apple Inc.",
+   "displaySymbol": "AAPL",
+   "symbol": "AAPL",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Apple Hospitality REIT Inc",
+   "displaySymbol": "APLE",
+   "symbol": "APLE",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Maui Land & Pineapple Company Inc",
+   "displaySymbol": "MLP",
+   "symbol": "MLP",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Apple iSports Group Inc",
+   "displaySymbol": "AAPI",
+   "symbol": "AAPI",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Pineapple Financial Inc",
+   "displaySymbol": "PAPL",
+   "symbol": "PAPL",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Pineapple Energy Inc",
+   "displaySymbol": "SUNE",
+   "symbol": "SUNE",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Pineapple Inc",
+   "displaySymbol": "PNPL",
+   "symbol": "PNPL",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Pineapple Express Cannabis Co",
+   "displaySymbol": "PNXP",
+   "symbol": "PNXP",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Golden Apple Oil & Gas Inc",
+   "displaySymbol": "GAPJ",
+   "symbol": "GAPJ",
+   "type": "Common Stock"
+  },
+  {
+   "description": "Apple Rush Company Inc",
+   "displaySymbol": "APRU",
+   "symbol": "APRU",
+   "type": "Common Stock"
+  }
+ ]
+}

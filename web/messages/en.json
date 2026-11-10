@@ -179,7 +179,14 @@
     "retry": "Retry",
     "close": "Close",
     "cancel": "Cancel",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "errors": {
+      "rateLimited": "The data provider's rate limit was reached.",
+      "autoRetry": "Retrying automatically in a moment…",
+      "notFound": "Not found for this symbol.",
+      "unreachable": "Can't reach the data server.",
+      "provider": "The data provider returned an error."
+    }
   },
   "tabs": {
     "label": "Details",
@@ -310,5 +317,10 @@
       "thanksgiving": "Thanksgiving",
       "christmas": "Christmas"
     }
+  },
+  "connection": {
+    "offline": "You are offline. Prices and news will update when the connection is back.",
+    "serverDownTitle": "Data server not reachable.",
+    "serverDown": "Make sure pnpm dev is running (server on port 4000). The page reloads its data automatically when it's back."
   }
 }

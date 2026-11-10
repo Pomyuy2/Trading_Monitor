@@ -15,7 +15,7 @@ export function InsightCards({ symbol, quote }: { symbol: string; quote: Quote |
   if (error && !data) {
     return (
       <Card title={t('profileTitle')}>
-        <ErrorState onRetry={() => mutate()} />
+        <ErrorState error={error} onRetry={() => mutate()} />
       </Card>
     );
   }

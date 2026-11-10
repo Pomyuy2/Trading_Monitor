@@ -49,7 +49,7 @@ export function KeyLevelsCard({ symbol, range, quote, onAlert }: { symbol: strin
       }
     >
       {error && !lv ? (
-        <ErrorState onRetry={() => mutate()} />
+        <ErrorState error={error} onRetry={() => mutate()} />
       ) : isLoading || !lv ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-10" />)}
