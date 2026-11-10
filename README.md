@@ -48,7 +48,26 @@ It runs on your own PC with free data plans, and works without any API keys in d
    ```
    Open **<http://localhost:3000>**. The first run creates the local database with a starter watchlist.
 
-Stop with **Ctrl + C**. After `git pull`, stop the app, run `pnpm install`, then `pnpm dev` again.
+Stop with **Ctrl + C**. That's development mode; for everyday use, run it in the background instead (below).
+
+## Everyday use: fast background app (recommended)
+
+```bash
+pnpm app:start            # build once (~30 s), then run in the background — no terminal needed
+pnpm app:status           # running? server and web app healthy? autostart on?
+pnpm app:stop             # stop it
+pnpm app:restart          # stop + start
+pnpm app:logs             # last lines of logs/server.log, logs/web.log, logs/supervisor.log
+pnpm app:update           # after `git pull`: stop, install, rebuild, start
+pnpm app:autostart on     # start automatically when you sign in to Windows (off: pnpm app:autostart off)
+```
+
+- **Fast:** an optimized production build (pages ~1 s) instead of the development server, and the server
+  pre-warms your watchlist stocks right after it starts, so the first page you open is quick too.
+- **Always running:** keeps going after you close the terminal; if the server or web app crashes, it is
+  restarted automatically within seconds. With autostart on, prices and alerts run whenever you're signed in.
+- `pnpm app:start` refuses to start while `pnpm dev` is using ports 3000/4000 — use one or the other.
+- Autostart adds a small `Trading Monitor.vbs` to your Windows Startup folder (no admin rights needed).
 
 ## API keys (all free plans)
 

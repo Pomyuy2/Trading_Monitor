@@ -13,3 +13,6 @@ test-results
 next-env.d.ts
 .next-e2e
 blob-report
+.next-prod
+logs/
+.run/

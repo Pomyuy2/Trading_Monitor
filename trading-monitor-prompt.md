@@ -159,4 +159,17 @@ Handle these states:
    - Playwright smoke test.
    - A README covering setup, getting API keys, and the free-plan limits of each provider.
 
+7. **Fast, always-ready app:**
+   - Production mode (optimized build) instead of the development server, so pages load fast.
+   - Runs in the background with no terminal window, restarts itself if it crashes, and keeps logs.
+   - Optional: starts automatically when Windows starts, so prices and alerts are always running.
+   - Simple commands to start, stop, restart, check status and update after `git pull`.
+8. **Watchlist upgrades:**
+   - Small trend chart (sparkline) for each stock.
+   - Sort by % change, name or price; drag to reorder; optional groups.
+   - Summary row: how many stocks are up / down today.
+
+Later ideas (not scheduled): phone alerts (LINE Official Account, email or the ntfy app — not Telegram),
+portfolio tracking, AI features with an Anthropic API key, HTTPS hosting/tunnel for phone use, Thai SET stocks.
+
 Start with Phase 1. Ask me before adding any paid service or changing the stack.

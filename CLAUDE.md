@@ -32,7 +32,10 @@ phases or features. This file records what has been built, the decisions behind 
 | 5.5 Comfort features | done (prefs, crosshair tooltip, market status bar, E/D markers, compare ×2 + SPY, light theme, shortcuts, PWA + push) |
 | 6 Polish | done: error states by cause + connection/offline banner, provider adapter tests on recorded responses, Playwright smoke test (desktop + phone, demo data), full README |
 
-All phases in `trading-monitor-prompt.md` are complete. Further work only if the user asks (see open items).
+| 7 Fast, always-ready app | done: `scripts/run.mjs` (`pnpm app:*`) — production build in `web/.next-prod`, background supervisor with crash restart + logs in `logs/`, startup pre-warm of watchlist caches, optional Windows autostart (Startup-folder .vbs) |
+| **8 Watchlist upgrades** | **next**: sparklines, sort, drag to reorder, groups, up/down summary |
+
+Phone alerts: the user does **not** use Telegram; candidates are LINE Official Account, email or the ntfy app (deferred).
 
 Open items / not yet verified:
 - Claude features (news summary, AI sentiment, guidance extraction + Thai translation) are built and
@@ -50,7 +53,8 @@ Open items / not yet verified:
 npm i -g pnpm@10          # corepack enable fails on Windows (Program Files is read-only)
 pnpm install              # Node >= 20 (developed on Node 24)
 cp server/.env.example server/.env   # then add keys
-pnpm dev                  # web http://localhost:3000, server http://localhost:4000
+pnpm dev                  # development: web http://localhost:3000, server http://localhost:4000
+pnpm app:start            # everyday: production build in the background (see README); app:stop/status/logs/update
 pnpm test                 # vitest: 106 unit/integration tests, no network
 pnpm test:e2e             # Playwright smoke test (28 tests), own ports 3100/4100 + own DB
 cd server && npx tsc --noEmit ; cd ../web && npx tsc --noEmit
@@ -104,6 +108,10 @@ SQLite via Prisma 6 at `server/data/trading.db` (git-ignored, per PC). Models: `
 New migration: `cd server && npx prisma migrate dev --name <name>` (stop the dev server first).
 
 ## Gotchas learned the hard way
+
+- `pnpm dev` and the background app (`pnpm app:start`) both use ports 3000/4000 — only one at a time.
+  `app:start` refuses if the ports are busy; `app:status` tells which is running. When the user runs the
+  background app, restart it after code changes with `pnpm app:update` (rebuild) — it does not hot-reload.
 
 - **Windows + Prisma:** a running server locks the Prisma engine DLL, so `prisma generate` / installs
   fail (EPERM). Stop the dev server first. Killing only the process on port 4000 is not enough — the

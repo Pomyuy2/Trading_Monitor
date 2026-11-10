@@ -8,7 +8,15 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter server test",
     "test:e2e": "playwright test",
-    "test:all": "pnpm test && pnpm test:e2e"
+    "test:all": "pnpm test && pnpm test:e2e",
+    "app:start": "node scripts/run.mjs start",
+    "app:stop": "node scripts/run.mjs stop",
+    "app:restart": "node scripts/run.mjs restart",
+    "app:status": "node scripts/run.mjs status",
+    "app:logs": "node scripts/run.mjs logs",
+    "app:update": "node scripts/run.mjs update",
+    "app:build": "node scripts/run.mjs build",
+    "app:autostart": "node scripts/run.mjs autostart"
   },
   "engines": {
     "node": ">=20"

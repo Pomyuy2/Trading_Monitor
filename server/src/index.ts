@@ -250,3 +250,23 @@ process.on('unhandledRejection', (err) => console.error('[server] unhandled reje
 await app.listen({ port: env.PORT, host: env.HOST });
 app.log.info(`Provider routing: ${JSON.stringify(providers.routing())}`);
 app.log.info(`AI: ${ai.claude ? ai.claude.name : 'off (no ANTHROPIC_API_KEY) - keyword sentiment, no summaries'}`);
+
+/**
+ * Pre-warm caches for watchlist stocks right after startup, so the first page you open is fast.
+ * Uses only Finnhub (60 calls/min) and SEC (free); FMP's daily allowance and Twelve Data's
+ * per-minute limit are left for what you actually open. Runs quietly in the background.
+ */
+async function prewarm() {
+  const t0 = Date.now();
+  const symbols = (await watchlist.list()).map((w) => w.symbol);
+  const quoteProvider = providers.for('quote');
+  const docsProvider = providers.for('transcripts');
+  for (const s of symbols) {
+    if (closing) return;
+    await market.quote(s).catch(() => {}); // fills Finnhub fundamentals (cached 12 h) + market status
+    if (docsProvider !== quoteProvider) await docsProvider.getGuidanceDocuments(s).catch(() => {}); // SEC filings (cached 12 h)
+    await new Promise((r) => setTimeout(r, 300)); // gentle on the providers
+  }
+  app.log.info(`Pre-warmed ${symbols.length} watchlist symbols in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+}
+void prewarm();
