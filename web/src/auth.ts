@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { decodePayload } from '@tm/shared';
 import { authConfig } from './auth.config';
 
 const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
@@ -21,15 +22,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        const email = String(credentials.email).trim().toLowerCase();
-        const password = String(credentials.password);
+        const rawEmail = String(credentials.email);
+        const rawPassword = String(credentials.password);
+        const email = decodePayload(rawEmail).trim().toLowerCase();
+        const password = decodePayload(rawPassword);
 
         // 1. Verify against Fastify internal endpoint (connected to SQLite User table)
         try {
           const res = await fetch(`${API_URL}/api/internal/auth/verify`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email: rawEmail, password: rawPassword }),
             signal: AbortSignal.timeout(5000),
           });
 

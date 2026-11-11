@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
+import { encodePayload } from '@tm/shared';
 import { EyeIcon, EyeOffIcon, LogoIcon, MoonIcon, SunIcon, UserIcon } from '@/components/icons';
 import { cx, useLang } from '@/components/ui';
 import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
@@ -46,8 +47,8 @@ export default function SignUpPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
+          email: encodePayload(email.trim().toLowerCase()),
+          password: encodePayload(password),
           inviteCode: inviteCode.trim(),
         }),
       });
@@ -70,8 +71,8 @@ export default function SignUpPage() {
 
       // Successful registration -> sign in immediately
       const signInRes = await signIn('credentials', {
-        email: email.trim().toLowerCase(),
-        password,
+        email: encodePayload(email.trim().toLowerCase()),
+        password: encodePayload(password),
         redirect: false,
         redirectTo: '/',
       });

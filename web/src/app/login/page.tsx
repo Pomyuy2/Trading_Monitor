@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
+import { encodePayload } from '@tm/shared';
 import { EyeIcon, EyeOffIcon, LockIcon, LogoIcon, MoonIcon, SunIcon } from '@/components/icons';
 import { cx, useLang } from '@/components/ui';
 import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
@@ -47,8 +48,8 @@ export default function LoginPage() {
 
     try {
       const res = await signIn('credentials', {
-        email: email.trim().toLowerCase(),
-        password,
+        email: encodePayload(email.trim().toLowerCase()),
+        password: encodePayload(password),
         redirect: false,
         redirectTo: callbackUrl,
       });

@@ -81,7 +81,8 @@ model PushSubscription {
 
 model User {
   id                String             @id @default(cuid())
-  email             String             @unique
+  email             String
+  emailHash         String?            @unique
   name              String?
   passwordHash      String
   createdAt         DateTime           @default(now())

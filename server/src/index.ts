@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
-import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse } from '@tm/shared';
+import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse, decodePayload } from '@tm/shared';
 import Fastify, { type FastifyReply } from 'fastify';
 import { AnthropicAi } from './ai/anthropic-ai.js';
 import { RouterAi } from './ai/router-ai.js';
@@ -143,8 +143,8 @@ app.post('/api/internal/auth/verify', async (req, reply) => {
 });
 
 const registerBodySchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
+  email: z.string().min(1),
+  password: z.string().min(1),
   inviteCode: z.string().min(1),
 });
 
@@ -152,6 +152,12 @@ app.post('/api/register', async (req, reply) => {
   const parsed = registerBodySchema.safeParse(req.body);
   if (!parsed.success) {
     return reply.code(400).send({ ok: false, error: 'invalid_input', message: 'Invalid registration input' });
+  }
+
+  const rawEmail = decodePayload(parsed.data.email).trim().toLowerCase();
+  const rawPass = decodePayload(parsed.data.password);
+  if (!rawEmail.includes('@') || rawPass.length < 6) {
+    return reply.code(400).send({ ok: false, error: 'invalid_input', message: 'Invalid email or password' });
   }
 
   const cfIp = req.headers['cf-connecting-ip'];
@@ -165,8 +171,8 @@ app.post('/api/register', async (req, reply) => {
     '127.0.0.1';
 
   const result = await users.registerUser({
-    email: parsed.data.email,
-    password: parsed.data.password,
+    email: rawEmail,
+    password: rawPass,
     inviteCode: parsed.data.inviteCode,
     ip,
   });

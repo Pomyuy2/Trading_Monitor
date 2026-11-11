@@ -1,5 +1,7 @@
 import bcrypt from 'bcryptjs';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, User } from '@prisma/client';
+import { decodePayload } from '@tm/shared';
+import { computeEmailHash, decryptEmail, encryptEmail } from './crypto.js';
 
 export interface AuthUser {
   id: string;
@@ -15,30 +17,60 @@ export class UserService {
   private readonly defaultEmail: string;
   private readonly defaultPass: string;
   private readonly inviteCode: string;
+  private readonly secret: string;
   private defaultUserId: string = 'default-user';
 
   constructor(
     private readonly db: PrismaClient,
-    env: { AUTH_USER_EMAIL?: string; AUTH_USER_PASSWORD?: string; AUTH_INVITE_CODE?: string } = process.env,
+    env: { AUTH_USER_EMAIL?: string; AUTH_USER_PASSWORD?: string; AUTH_INVITE_CODE?: string; AUTH_SECRET?: string } = process.env,
     private readonly log: { info(m: string): void; warn(m: string): void } = console,
   ) {
     this.defaultEmail = env.AUTH_USER_EMAIL?.trim() ? env.AUTH_USER_EMAIL.trim().toLowerCase() : '';
     this.defaultPass = env.AUTH_USER_PASSWORD || '';
     this.inviteCode = env.AUTH_INVITE_CODE?.trim() || DEFAULT_INVITE_CODE;
+    this.secret = env.AUTH_SECRET || process.env.AUTH_SECRET || '';
   }
 
   async init(): Promise<void> {
     try {
-      if (this.defaultEmail && this.defaultPass) {
-        let admin = await this.db.user.findUnique({
-          where: { email: this.defaultEmail },
+      // 1. Transparently migrate any unmigrated users in the DB:
+      // compute emailHash and encrypt email if stored in plaintext
+      const unmigratedUsers = await this.db.user.findMany({
+        where: {
+          OR: [
+            { emailHash: null },
+            { NOT: { email: { startsWith: 'enc:' } } },
+          ],
+        },
+      });
+
+      for (const u of unmigratedUsers) {
+        if (u.id === 'default-user') continue;
+        const plain = decryptEmail(u.email, this.secret);
+        const enc = encryptEmail(plain, this.secret);
+        const eHash = computeEmailHash(plain, this.secret);
+        await this.db.user.update({
+          where: { id: u.id },
+          data: {
+            email: enc,
+            emailHash: eHash,
+          },
         });
+        this.log.info(`Encrypted email for user ${u.id}`);
+      }
+
+      // 2. Initialize configured admin user if explicitly set
+      if (this.defaultEmail && this.defaultPass) {
+        let admin = await this.findUserByEmail(this.defaultEmail);
 
         if (!admin) {
           const hash = await bcrypt.hash(this.defaultPass, 10);
+          const encEmail = encryptEmail(this.defaultEmail, this.secret);
+          const eHash = computeEmailHash(this.defaultEmail, this.secret);
           admin = await this.db.user.create({
             data: {
-              email: this.defaultEmail,
+              email: encEmail,
+              emailHash: eHash,
               name: this.defaultEmail.split('@')[0] || 'Admin',
               passwordHash: hash,
             },
@@ -63,14 +95,35 @@ export class UserService {
     }
   }
 
+  async findUserByEmail(email: string): Promise<User | null> {
+    const cleanEmail = decodePayload(email).trim().toLowerCase();
+    if (!cleanEmail) return null;
+    const eHash = computeEmailHash(cleanEmail, this.secret);
+
+    // Search by emailHash or plaintext email for backward compatibility
+    const user = await this.db.user.findFirst({
+      where: {
+        OR: [
+          { emailHash: eHash },
+          { email: cleanEmail },
+        ],
+      },
+    });
+
+    if (!user) return null;
+
+    return {
+      ...user,
+      email: decryptEmail(user.email, this.secret),
+    };
+  }
+
   async getDefaultUserId(): Promise<string> {
     if (this.defaultUserId && this.defaultUserId !== 'default-user') {
       return this.defaultUserId;
     }
     if (this.defaultEmail) {
-      const admin = await this.db.user.findUnique({
-        where: { email: this.defaultEmail },
-      });
+      const admin = await this.findUserByEmail(this.defaultEmail);
       if (admin) {
         this.defaultUserId = admin.id;
         return admin.id;
@@ -88,30 +141,29 @@ export class UserService {
   }
 
   async verifyCredentials(email: string, password: string): Promise<AuthUser | null> {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !password) return null;
+    const cleanEmail = decodePayload(email).trim().toLowerCase();
+    const cleanPass = decodePayload(password);
+    if (!cleanEmail || !cleanPass) return null;
 
     try {
-      const user = await this.db.user.findUnique({
-        where: { email: cleanEmail },
-      });
+      const user = await this.findUserByEmail(cleanEmail);
 
       if (user) {
-        const valid = await bcrypt.compare(password, user.passwordHash);
+        const valid = await bcrypt.compare(cleanPass, user.passwordHash);
         if (valid) {
           return { id: user.id, email: user.email, name: user.name };
         }
       }
 
       // Environment variable fallback check
-      if (cleanEmail === this.defaultEmail && password === this.defaultPass) {
+      if (cleanEmail === this.defaultEmail && cleanPass === this.defaultPass) {
         return { id: this.defaultUserId, email: this.defaultEmail, name: 'Admin' };
       }
 
       return null;
     } catch {
       // Fallback to env comparison if DB query fails
-      if (cleanEmail === this.defaultEmail && password === this.defaultPass) {
+      if (cleanEmail === this.defaultEmail && cleanPass === this.defaultPass) {
         return { id: this.defaultUserId, email: this.defaultEmail, name: 'Admin' };
       }
       return null;
@@ -150,8 +202,8 @@ export class UserService {
     | { ok: true; user: AuthUser }
     | { ok: false; error: 'rate_limited' | 'invalid_invite' | 'email_exists' | 'invalid_input'; remaining?: number }
   > {
-    const cleanEmail = params.email.trim().toLowerCase();
-    const cleanPass = params.password;
+    const cleanEmail = decodePayload(params.email).trim().toLowerCase();
+    const cleanPass = decodePayload(params.password);
     const cleanInvite = params.inviteCode.trim();
 
     if (!cleanEmail || !cleanPass || cleanPass.length < 6) {
@@ -174,18 +226,20 @@ export class UserService {
     }
 
     // 3. Check if email already exists
-    const existing = await this.db.user.findUnique({
-      where: { email: cleanEmail },
-    });
+    const existing = await this.findUserByEmail(cleanEmail);
     if (existing) {
       return { ok: false, error: 'email_exists' };
     }
 
-    // 4. Create user
+    // 4. Create user with encrypted email and blind index
     const passwordHash = await bcrypt.hash(cleanPass, 10);
+    const encryptedEmail = encryptEmail(cleanEmail, this.secret);
+    const emailHash = computeEmailHash(cleanEmail, this.secret);
+
     const user = await this.db.user.create({
       data: {
-        email: cleanEmail,
+        email: encryptedEmail,
+        emailHash,
         passwordHash,
         name: cleanEmail.split('@')[0],
       },
@@ -212,7 +266,7 @@ export class UserService {
       ok: true,
       user: {
         id: user.id,
-        email: user.email,
+        email: cleanEmail,
         name: user.name,
       },
     };

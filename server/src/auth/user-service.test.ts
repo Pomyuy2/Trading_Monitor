@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { encodePayload } from '@tm/shared';
 import { UserService } from './user-service.js';
+import { decryptEmail } from './crypto.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'tm-users-'));
@@ -125,6 +127,56 @@ describe('UserService', () => {
     expect(dup.ok).toBe(false);
     if (!dup.ok) {
       expect(dup.error).toBe('email_exists');
+    }
+  });
+
+  it('stores email encrypted at rest with AES-256-GCM and computes emailHash blind index', async () => {
+    const rawEmail = 'secret-agent@example.com';
+    const res = await svc.registerUser({
+      email: rawEmail,
+      password: 'password123',
+      inviteCode: 'Y0DlUkMu@Y',
+      ip: '192.168.1.70',
+    });
+
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const stored = await db.user.findUnique({ where: { id: res.user.id } });
+      expect(stored).not.toBeNull();
+      // Email in DB is encrypted with AES-256-GCM
+      expect(stored?.email.startsWith('enc:')).toBe(true);
+      expect(stored?.email).not.toContain(rawEmail);
+      // Decrypting recovers original email
+      expect(decryptEmail(stored!.email)).toBe(rawEmail);
+      // emailHash blind index is stored and non-null
+      expect(stored?.emailHash).toBeTruthy();
+    }
+  });
+
+  it('supports encoded payloads (b64:...) in registration and credentials verification', async () => {
+    const rawEmail = 'obfuscated@example.com';
+    const rawPass = 'superSecretPass456';
+
+    const reg = await svc.registerUser({
+      email: encodePayload(rawEmail),
+      password: encodePayload(rawPass),
+      inviteCode: 'Y0DlUkMu@Y',
+      ip: '192.168.1.80',
+    });
+
+    expect(reg.ok).toBe(true);
+    if (reg.ok) {
+      expect(reg.user.email).toBe(rawEmail);
+
+      // Verify credentials with encoded payload
+      const auth = await svc.verifyCredentials(encodePayload(rawEmail), encodePayload(rawPass));
+      expect(auth).not.toBeNull();
+      expect(auth?.email).toBe(rawEmail);
+
+      // Verify credentials with plain payload also succeeds
+      const authPlain = await svc.verifyCredentials(rawEmail, rawPass);
+      expect(authPlain).not.toBeNull();
+      expect(authPlain?.email).toBe(rawEmail);
     }
   });
 });
