@@ -19,7 +19,11 @@ import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Windows: always use an upper-case drive letter. If a terminal opened the folder as `d:\...`, Next's
+// bundler sees some files as `d:\...` and others as `D:\...`, bundles Next twice, and the page crashes
+// with "invariant expected layout router to be mounted".
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..').replace(/^[a-z]:/, (d) => d.toUpperCase());
+if (process.platform === 'win32' && process.cwd().toLowerCase() === ROOT.toLowerCase()) process.chdir(ROOT);
 const RUN_DIR = join(ROOT, '.run');
 const LOG_DIR = join(ROOT, 'logs');
 const PID_FILE = join(RUN_DIR, 'supervisor.pid');

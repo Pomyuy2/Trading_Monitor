@@ -149,3 +149,87 @@ describe('provider fallback (free plan refuses a symbol)', () => {
     expect(insight.estimates).toMatchObject({ revenueAvg: null, epsAvg: null, meta: { note: NOT_IN_PLAN } });
   });
 });
+
+describe('news summary freshness', () => {
+  const article = (id: string, headline: string): NewsItem =>
+    ({ id, headline, snippet: '', source: 'Wire', url: 'https://example.com', publishedAt: new Date(Date.now() - 3600_000).toISOString(), sentiment: null }) as unknown as NewsItem;
+
+  function setup() {
+    const feed = { list: [article('a', 'Apple faces lawsuit'), article('b', 'Apple shares surge')] };
+    class NewsSource extends FakeDaily {
+      async getNews() {
+        return feed.list.map((h) => ({ ...h }));
+      }
+      async getQuote(symbol: string) {
+        return { symbol, name: 'Apple Inc', changePct: 1 } as never;
+      }
+    }
+    const calls = { summaries: 0, tagged: [] as string[] };
+    let gate: Promise<void> = Promise.resolve();
+    const ai: AiService = {
+      name: 'TestAI',
+      sentimentMethod: 'ai',
+      canSummarize: true,
+      canExtract: false,
+      tagSentiment: async (_s, items) => {
+        await gate;
+        calls.tagged.push(...items.map((i) => i.id));
+        return items.map(() => 'neutral' as const);
+      },
+      summarizeNews: async (_s, _n, _l, items) => {
+        await gate;
+        calls.summaries++;
+        return { text: `Summary of ${items.length}`, articleCount: items.length, source: 'TestAI' };
+      },
+    };
+    const src = new NewsSource('Finnhub', false);
+    const registry = { for: () => src, fallbackFor: () => null } as unknown as ProviderRegistry;
+    const cache = new LruCache();
+    const svc = new MarketService(registry, cache, { llm: ai, keyword: new KeywordAi(), mock: new MockAi() }, undefined, { aiWaitMs: 20 });
+    return {
+      svc,
+      calls,
+      /** New article arrives (and the 2-min headline cache has expired). */
+      publish: async (a: NewsItem) => {
+        feed.list = [a, ...feed.list];
+        await cache.delete('news:Finnhub:AAPL');
+      },
+      hold: () => {
+        let release!: () => void;
+        gate = new Promise<void>((r) => (release = r));
+        return () => release();
+      },
+    };
+  }
+
+  it('does not re-write the summary when no new articles arrived', async () => {
+    const { svc, calls } = setup();
+    await svc.news('AAPL', 'en');
+    await svc.news('AAPL', 'en');
+    expect(calls.summaries).toBe(1);
+  });
+
+  it('writes a new summary as soon as a new article arrives, showing the old one meanwhile', async () => {
+    const { svc, calls, publish, hold } = setup();
+    expect((await svc.news('AAPL', 'en')).summary?.text).toBe('Summary of 2');
+
+    const release = hold();
+    await publish(article('c', 'Apple unveils new chip'));
+    const during = await svc.news('AAPL', 'en');
+    expect(during.summary?.text).toBe('Summary of 2'); // old summary stays visible
+    expect(during.summaryUpdating).toBe(true);
+    expect(during.aiPending).toBe(true);
+    // Already-tagged headlines keep their AI tag; only the new one waits.
+    expect(during.sentimentMethod).toBe('ai');
+    expect(during.items.map((x) => [x.id, x.sentiment])).toEqual([['c', null], ['a', 'neutral'], ['b', 'neutral']]);
+
+    release();
+    await new Promise((r) => setTimeout(r, 30));
+    const after = await svc.news('AAPL', 'en');
+    expect(after.summary?.text).toBe('Summary of 3');
+    expect(after.summaryUpdating).toBeFalsy();
+    expect(after.items.find((x) => x.id === 'c')?.sentiment).toBe('neutral');
+    expect(calls.summaries).toBe(2);
+    expect(calls.tagged).toEqual(['a', 'b', 'c']); // each headline tagged once
+  });
+});

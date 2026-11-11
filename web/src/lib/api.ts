@@ -89,7 +89,7 @@ const AI_POLL_MS = 5_000;
 export function useNews(symbol: string, lang: Lang) {
   // While the AI is still writing (aiPending), ask again every few seconds.
   return useSWR<NewsResponse>(`/api/news/${enc(symbol)}?lang=${lang}`, fetchJson, {
-    refreshInterval: (d?: NewsResponse) => (d?.aiPending ? AI_POLL_MS : 5 * 60_000),
+    refreshInterval: (d?: NewsResponse) => (d?.aiPending ? AI_POLL_MS : 2 * 60_000),
     ...noRetryOn404,
   });
 }

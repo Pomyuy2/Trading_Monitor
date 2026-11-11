@@ -34,7 +34,8 @@ phases or features. This file records what has been built, the decisions behind 
 
 | 7 Fast, always-ready app | done: `scripts/run.mjs` (`pnpm app:*`) — production build in `web/.next-prod`, background supervisor with crash restart + logs in `logs/`, startup pre-warm of watchlist caches, optional Windows autostart (Startup-folder .vbs) |
 | 8 Watchlist upgrades | done: 1-month sparklines (`/api/sparklines`, batch `/api/quotes`), up/down summary, sort (saved pref `tm_wlsort`), edit-order mode with pointer drag + arrow keys (`PUT /api/watchlist/order`), groups via the row ⋯ menu (`PATCH /api/watchlist/:s`, collapse state in localStorage). Also: Twelve Data fallback for daily candles, `notInPlan` caching, per-provider 429 back-off |
-| **Next** | not planned yet: ask the user (ideas in the prompt's "Later ideas": phone alerts via LINE/email/ntfy, portfolio, AI key, HTTPS, SET) |
+| 8.5 AI via router + summary panel | done (2026-11-11): `RouterAi`, AI work in the background (`aiJob`), `AiSummaryPanel` under the price header (grid area `summary`), summary keyed by the set of last-24 h article ids (new article → new summary; unchanged → none; hourly refresh for the price-move wording), previous summary shown with `summaryUpdating`, news list re-checked every 2 min |
+| **Next** | "Ask about this stock" chatbot (offered, user wanted the summary fixes first); other ideas: ask the user (ideas in the prompt's "Later ideas": phone alerts via LINE/email/ntfy, portfolio, AI key, HTTPS, SET) |
 
 Phone alerts: the user does **not** use Telegram; candidates are LINE Official Account, email or the ntfy app (deferred).
 
@@ -57,7 +58,7 @@ pnpm install              # Node >= 20 (developed on Node 24)
 cp server/.env.example server/.env   # then add keys
 pnpm dev                  # development: web http://localhost:3000, server http://localhost:4000
 pnpm app:start            # everyday: production build in the background (see README); app:stop/status/logs/update
-pnpm test                 # vitest: 129 unit/integration tests, no network
+pnpm test                 # vitest: 131 unit/integration tests, no network
 pnpm test:e2e             # Playwright smoke test (32 run + 8 phone-skipped), own ports 3100/4100 + own DB
 cd server && npx tsc --noEmit ; cd ../web && npx tsc --noEmit
 ```
@@ -113,6 +114,10 @@ New migration: `cd server && npx prisma migrate dev --name <name>` (stop the dev
 
 ## Gotchas learned the hard way
 
+- **Windows drive-letter case:** building from a shell whose path is `d:Trading_Monitor` (lower case) made webpack bundle
+  Next twice (`d:…` and `D:…`) → every page crashed with "invariant expected layout router to be mounted" (build log:
+  "Compiled with warnings" listing both paths). `scripts/run.mjs` now upper-cases the drive letter and `chdir`s. If it ever
+  happens with `pnpm dev`, open the terminal at `D:Trading_Monitor`.
 - `pnpm dev` and the background app (`pnpm app:start`) both use ports 3000/4000 — only one at a time.
   `app:start` refuses if the ports are busy; `app:status` tells which is running. When the user runs the
   background app, restart it after code changes with `pnpm app:update` (rebuild) — it does not hot-reload.

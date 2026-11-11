@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMeta } from '@/lib/api';
 import { loadPref, savePref } from '@/lib/prefs';
 import { useLiveQuote } from '@/lib/use-live-quote';
+import { AiSummaryPanel } from './AiSummaryPanel';
 import { AlertCenter } from './AlertCenter';
 import { AlertsPanel } from './AlertsPanel';
 import { ChartCard } from './ChartCard';
@@ -136,6 +137,15 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
               maxCompares={MAX_COMPARES}
               onAlert={() => openAlert()}
               onCompare={() => setDialog('compare')}
+            />
+          </div>
+          <div className="area-summary min-w-0">
+            <AiSummaryPanel
+              symbol={symbol}
+              onShowNews={() => {
+                setTab('news');
+                requestAnimationFrame(() => document.getElementById('news-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+              }}
             />
           </div>
           <div className="area-chart min-w-0">

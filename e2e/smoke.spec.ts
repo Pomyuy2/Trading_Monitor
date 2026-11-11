@@ -27,6 +27,15 @@ test.describe('dashboard', () => {
     await expect(page.getByText(/Data from .*Mock/)).toBeVisible();
     await expect(page.getByRole('note').filter({ hasText: /demo|mock/i })).toBeVisible();
 
+    // AI summary: right under the price, visible without scrolling, with the headline mood
+    const summary = page.locator('section[aria-labelledby="ai-summary-title"]');
+    await expect(summary.getByRole('heading', { name: 'AI summary' })).toBeVisible();
+    await expect(summary).toContainText(/Last 24 h headlines:/);
+    const box = await summary.boundingBox();
+    expect(box && box.y + Math.min(box.height, 120) <= page.viewportSize()!.height).toBe(true);
+    await summary.getByRole('button', { name: /See all news/ }).click();
+    await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeInViewport();
+
     // chart + levels
     await expect(page.getByText(/Change over 1 day/)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Key levels' })).toBeVisible();

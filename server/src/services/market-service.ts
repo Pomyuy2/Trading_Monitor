@@ -103,6 +103,13 @@ const AI_RETRY_AFTER_MS = 5 * 60_000;
 const GUIDANCE_WAIT_MS = 15_000;
 const PENDING = Symbol('pending');
 
+/** Short, stable key for a set of articles (order-independent). */
+function idsKey(items: { id: string }[]): string {
+  let h = 5381;
+  for (const id of items.map((x) => x.id).sort()) for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0;
+  return `${items.length}-${h.toString(36)}`;
+}
+
 export interface AiServices {
   /** The AI model: Claude (ANTHROPIC_API_KEY) or an OpenAI-compatible router (AI_BASE_URL + AI_API_KEY + AI_MODEL). */
   llm: AiService | null;
@@ -318,33 +325,34 @@ export class MarketService {
     return this.ai.llm ?? this.ai.keyword;
   }
 
-  /**
-   * AI sentiment per headline, cached per article id so each headline is classified once.
-   * Throws if the AI fails (the caller then shows keyword tags).
-   */
-  private async aiSentiment(ai: AiService, symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
-    const labels = new Map<string, Sentiment>();
-    const todo: NewsItem[] = [];
+  /** Tags already known without asking the AI: from the provider, or cached from an earlier AI call. */
+  private async knownTags(ai: AiService, items: NewsItem[]): Promise<Map<string, Sentiment>> {
+    const known = new Map<string, Sentiment>();
     for (const it of items) {
-      if (it.sentiment) labels.set(it.id, it.sentiment);
+      if (it.sentiment) known.set(it.id, it.sentiment);
       else {
         const hit = await this.aiCache.get<Sentiment>(`sentiment:${ai.name}:${it.id}`);
-        if (hit) labels.set(it.id, hit.value);
-        else todo.push(it);
+        if (hit) known.set(it.id, hit.value);
       }
     }
+    return known;
+  }
+
+  /** Ask the AI to tag new headlines (each headline is tagged once and cached). Throws if the AI fails. */
+  private async tagNewHeadlines(ai: AiService, symbol: string, todo: NewsItem[]): Promise<Map<string, Sentiment>> {
+    const out = new Map<string, Sentiment>();
     for (let i = 0; i < todo.length; i += SENTIMENT_BATCH) {
       const batch = todo.slice(i, i + SENTIMENT_BATCH);
       const tags = await ai.tagSentiment(symbol, batch);
       for (const [j, it] of batch.entries()) {
-        labels.set(it.id, tags[j]);
+        out.set(it.id, tags[j]);
         await this.aiCache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
       }
     }
-    return { items: items.map((it) => ({ ...it, sentiment: labels.get(it.id) ?? null })), method: ai.sentimentMethod, source: ai.name };
+    return out;
   }
 
-  /** Keyword-rule tags (no AI) — used while the AI is busy or unavailable. */
+  /** Keyword-rule tags (no AI) — used while the AI hasn't tagged anything yet, or is unavailable. */
   private async keywordSentiment(symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
     const todo = items.filter((it) => !it.sentiment);
     const tags = await this.ai.keyword.tagSentiment(symbol, todo);
@@ -352,6 +360,14 @@ export class MarketService {
     return { items: items.map((it) => (it.sentiment ? it : { ...it, sentiment: byId.get(it.id) ?? null })), method: 'keywords', source: this.ai.keyword.name };
   }
 
+  /**
+   * Headlines + AI tags + AI summary. Freshness:
+   * - the headline list is re-checked every 2 min (TTL.news);
+   * - a new summary is written as soon as the set of last-24 h articles changes (and at most hourly
+   *   otherwise, so the price-move wording stays current); unchanged news is never re-summarized;
+   * - while a new summary is being written, the previous one stays on screen (`summaryUpdating`);
+   * - only new headlines wait for AI tags; already-tagged ones keep theirs.
+   */
   async news(symbol: string, lang: Lang): Promise<NewsResponse> {
     const p = this.providers.for('news');
     const ai = this.aiFor(p);
@@ -374,21 +390,41 @@ export class MarketService {
     const recent = headlines.filter((n) => Date.parse(n.publishedAt) >= Date.now() - 24 * 3600_000).slice(0, MAX_SUMMARY_ARTICLES);
     const wantSummary = ai.canSummarize && recent.length > 0;
 
-    // Sentiment and summary run side by side, in the background if the model is slow.
+    const known = await this.knownTags(ai, headlines);
+    const todo = headlines.filter((h) => !known.has(h.id));
+    const sumKey = `newsSummary:${ai.name}:${symbol}:${lang}:${idsKey(recent)}`;
+    const lastKey = `newsSummaryLast:${ai.name}:${symbol}:${lang}`;
+
+    // Tags and summary run side by side, in the background if the model is slow.
     const [tagged, summary] = await Promise.all([
-      this.aiJob(`sentiment:${ai.name}:${symbol}`, () => this.aiSentiment(ai, symbol, headlines)),
+      todo.length
+        ? this.aiJob(`sentiment:${ai.name}:${symbol}:${idsKey(todo)}`, () => this.tagNewHeadlines(ai, symbol, todo))
+        : Promise.resolve({ ready: true as const, value: new Map<string, Sentiment>() }),
       wantSummary
-        ? this.aiJob(`newsSummary:${ai.name}:${symbol}:${lang}`, () =>
-            cached(this.aiCache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
+        ? this.aiJob(sumKey, async () => {
+            const r = await cached(this.aiCache, sumKey, TTL.newsSummary, () =>
               ai.summarizeNews(symbol, quote?.name ?? null, lang, recent, quote?.changePct ?? null),
-            ),
-          )
+            );
+            if (r.value) await this.aiCache.set(lastKey, { ...r.value, writtenAt: r.storedAt }, TTL.newsSummaryLast);
+            return r;
+          })
         : null,
     ]);
-    // A job started for an older headline list may not cover the current one; use keywords for this response.
-    const tagsFit = tagged.ready && headlines.every((h) => tagged.value.items.some((x) => x.id === h.id));
-    const { items, method, source } = tagged.ready && tagsFit ? tagged.value : await this.keywordSentiment(symbol, headlines);
-    const sentimentPending = !tagged.ready && !tagged.failed;
+
+    let items: NewsItem[];
+    let method: SentimentMethod = ai.sentimentMethod;
+    let source = ai.name;
+    let sentimentPending = false;
+    if (tagged.ready) {
+      items = headlines.map((h) => ({ ...h, sentiment: known.get(h.id) ?? tagged.value.get(h.id) ?? null }));
+    } else if (!tagged.failed && known.size > 0) {
+      // Keep the AI tags we have; new headlines show their tag once the AI is done.
+      items = headlines.map((h) => ({ ...h, sentiment: known.get(h.id) ?? null }));
+      sentimentPending = true;
+    } else {
+      ({ items, method, source } = await this.keywordSentiment(symbol, headlines));
+      sentimentPending = !tagged.failed;
+    }
     const base = {
       symbol,
       lang,
@@ -400,20 +436,21 @@ export class MarketService {
 
     if (!ai.canSummarize) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'disabled' };
     if (!summary) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'no-recent' };
-    if (!summary.ready) return { ...base, aiPending: sentimentPending || !summary.failed, summary: null, summaryStatus: summary.failed ? 'error' : 'pending' };
-    const s = summary.value;
-    if (!s.value) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'error' };
-    return {
-      ...base,
-      aiPending: sentimentPending,
-      summary: {
-        text: s.value.text,
-        articleCount: s.value.articleCount,
-        lang,
-        meta: { source: s.value.source, updatedAt: new Date(s.storedAt).toISOString() },
-      },
-      summaryStatus: 'ok',
-    };
+    const toSummary = (v: { text: string; articleCount: number; source: string }, writtenAt: number) => ({
+      text: v.text,
+      articleCount: v.articleCount,
+      lang,
+      meta: { source: v.source, updatedAt: new Date(writtenAt).toISOString() },
+    });
+    if (summary.ready && summary.value.value) {
+      return { ...base, aiPending: sentimentPending, summary: toSummary(summary.value.value, summary.value.storedAt), summaryStatus: 'ok' };
+    }
+    // New summary still being written (or it failed): keep showing the previous one if there is one.
+    const updating = !summary.ready && !summary.failed;
+    const last = (await this.aiCache.get<{ text: string; articleCount: number; source: string; writtenAt: number }>(lastKey))?.value;
+    if (last) return { ...base, aiPending: sentimentPending || updating, summary: toSummary(last, last.writtenAt), summaryStatus: 'ok', summaryUpdating: updating };
+    if (updating) return { ...base, aiPending: true, summary: null, summaryStatus: 'pending' };
+    return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'error' };
   }
 
   async insight(symbol: string, lang: Lang): Promise<InsightResponse> {

@@ -94,6 +94,7 @@ html[lang='th'] body {
   gap: 1rem;
 }
 .area-price { grid-area: price; }
+.area-summary { grid-area: summary; }
 .area-chart { grid-area: chart; }
 .area-levels { grid-area: levels; }
 .area-tabs { grid-area: tabs; }
@@ -106,7 +107,7 @@ html[lang='th'] body {
     display: grid;
     align-content: start;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'price' 'chart' 'levels' 'stats' 'news' 'insight';
+    grid-template-areas: 'price' 'summary' 'chart' 'levels' 'stats' 'news' 'insight';
   }
 }
 @media (min-width: 1280px) {
@@ -114,6 +115,7 @@ html[lang='th'] body {
     grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
     grid-template-areas:
       'price price'
+      'summary summary'
       'chart levels'
       'chart news'
       'stats news'

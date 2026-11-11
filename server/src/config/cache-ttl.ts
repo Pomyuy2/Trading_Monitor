@@ -11,8 +11,9 @@ export const TTL = {
   sparkline: 12 * HOUR, // watchlist trend lines (daily closes); today's point comes from the live price
   keyStats: 5 * MIN,
   notInPlan: 12 * HOUR, // remember 'not in your free plan' answers so we don't ask again on every refresh
-  news: 5 * MIN,
-  newsSummary: 15 * MIN,
+  news: 2 * MIN, // headline list; new articles show up within ~2 min
+  newsSummary: 1 * HOUR, // keyed by the set of articles, so new articles trigger a new summary at once
+  newsSummaryLast: 24 * HOUR, // previous summary, shown while a new one is being written
   levels: 24 * HOUR, // keyed by the latest candle, so new candles trigger a recompute anyway
   sentiment: 7 * 24 * HOUR, // per headline; a headline's tag doesn't change
   profile: 24 * HOUR,

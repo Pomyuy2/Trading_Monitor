@@ -17,7 +17,10 @@ It runs on your own PC with free data plans, and works without any API keys in d
 - **Support & resistance** zones and pivot points, with a Key levels card (neutral wording only).
 - **Key stats**: open, day range, previous close, volume, average volume, market cap, P/E, 52-week range,
   dividend yield.
-- **News** with Positive / Negative / Neutral tags, and an AI summary when an AI key is set (Anthropic, or an OpenAI-compatible model router).
+- **AI news summary** at the top of each stock page (when an AI key is set — Anthropic, or an OpenAI-compatible model
+  router), with the mood of the last 24 h of headlines. It is rewritten as soon as new articles arrive (news is checked
+  every 2 minutes); the previous summary stays visible with "Updating…" meanwhile.
+- **News** with Positive / Negative / Neutral tags.
 - **Company insight**: CEO, CFO, HQ, employees; next-year guidance from the latest SEC filings
   (extracted by AI, every value backed by a quote from the filing); analyst estimates, price targets,
   ratings and the next earnings date.

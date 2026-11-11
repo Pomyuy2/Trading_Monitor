@@ -152,6 +152,8 @@ export interface NewsResponse {
   sentimentSource: string | null;
   /** The AI is still working on tags or the summary (shown meanwhile: keyword tags / "writing…"); ask again soon. */
   aiPending?: boolean;
+  /** The summary shown is the previous one; a new one (with newer articles) is being written. */
+  summaryUpdating?: boolean;
   meta: SourceMeta;
 }
 

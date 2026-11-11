@@ -120,7 +120,7 @@
   "news": {
     "title": "News",
     "aiSummary": "AI summary",
-    "articles": "{count, plural, one {# article} other {# articles}} in last 24 h",
+    "articles": "Based on {count, plural, one {# article} other {# articles}}",
     "positive": "Positive",
     "negative": "Negative",
     "neutral": "Neutral",
@@ -131,6 +131,10 @@
     "summaryNoRecent": "No articles in the last 24 hours to summarize.",
     "sentimentKeywords": "Sentiment tags: keyword rules (no AI), may be inaccurate.",
     "sentimentPending": "Sentiment tags: keyword rules for now — AI tags are on the way.",
+    "summaryUpdating": "Updating with newer articles…",
+    "seeAllNews": "See all news",
+    "mood24h": "Last 24 h headlines:",
+    "moodLabel": "Last 24 hours of headlines: {up} positive, {down} negative, {flat} neutral",
     "summaryPending": "Writing the AI summary… (first time for this stock can take up to a minute)",
     "sentimentBy": "Sentiment tags: {source}"
   },
