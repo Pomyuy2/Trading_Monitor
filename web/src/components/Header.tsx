@@ -4,9 +4,10 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, useTransition } from 'react';
+import { signOut } from 'next-auth/react';
 import { useSearch } from '@/lib/api';
 import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
-import { ListIcon, LogoIcon, MoonIcon, SearchIcon, SunIcon } from './icons';
+import { ListIcon, LogoIcon, LogOutIcon, MoonIcon, SearchIcon, SunIcon } from './icons';
 import { btn, cx, useLang } from './ui';
 
 export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
@@ -29,9 +30,25 @@ export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle />
           <LanguageSwitch />
+          <SignOutButton />
         </div>
       </div>
     </header>
+  );
+}
+
+function SignOutButton() {
+  const t = useTranslations('auth');
+  return (
+    <button
+      type="button"
+      onClick={() => signOut({ redirectTo: '/login' })}
+      aria-label={t('signOut')}
+      title={t('signOut')}
+      className={btn.icon}
+    >
+      <LogOutIcon width={18} height={18} />
+    </button>
   );
 }
 

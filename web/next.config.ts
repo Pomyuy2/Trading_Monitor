@@ -14,7 +14,7 @@ const config: NextConfig = {
   // within ~15 s and finishes AI work in the background, so this is only a safety net).
   experimental: { proxyTimeout: 120_000 },
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${API_URL}/api/:path*` }];
+    return [{ source: '/api/:path((?!auth).*)', destination: `${API_URL}/api/:path*` }];
   },
 };
 

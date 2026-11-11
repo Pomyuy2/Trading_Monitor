@@ -4,6 +4,11 @@
 		reverse_proxy 127.0.0.1:4000
 	}
 
+	# Auth.js / NextAuth endpoints handled by Next.js
+	handle /api/auth/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
 	# Fastify REST API
 	handle /api/* {
 		reverse_proxy 127.0.0.1:4000

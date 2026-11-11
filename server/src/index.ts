@@ -19,6 +19,7 @@ import { SqliteCache } from './cache/sqlite-cache.js';
 import { db } from './store/db.js';
 import { PrismaWatchlistStore } from './store/watchlist-store.js';
 import { PushService } from './push/push-service.js';
+import { UserService } from './auth/user-service.js';
 
 // trustProxy 'loopback': the Next.js dev proxy forwards the real client IP (X-Forwarded-For)
 // so the per-IP rate limit works; headers from non-local peers are ignored.
@@ -49,6 +50,8 @@ const alerts = new AlertService(db, market, hub, log);
 providers.for('realtime').onTick((t) => alerts.handleTick(t));
 const push = new PushService(db, env.VAPID_SUBJECT, log);
 await push.init();
+const users = new UserService(db, process.env, log);
+await users.init();
 alerts.onTriggered((alert) => {
   hub.broadcastAll({ type: 'alert', alert });
   void push.sendAlert(alert);
@@ -90,6 +93,23 @@ app.setErrorHandler((err, _req, reply) => {
 
 // ---------- REST ----------
 app.get('/api/health', async () => ({ ok: true, realtime: hub.stats }));
+
+const verifyBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+app.post('/api/internal/auth/verify', async (req, reply) => {
+  const parsed = verifyBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ ok: false, error: 'Invalid input' });
+  }
+  const user = await users.verifyCredentials(parsed.data.email, parsed.data.password);
+  if (!user) {
+    return reply.code(401).send({ ok: false, error: 'Invalid email or password' });
+  }
+  return { ok: true, user };
+});
 
 app.get('/api/meta', async (): Promise<MetaResponse> => ({
   providers: [...providers.activeNames(), ...(ai.llm ? [ai.llm.name] : [])],

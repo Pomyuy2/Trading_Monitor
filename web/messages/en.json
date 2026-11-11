@@ -375,6 +375,23 @@
     "error": "Failed to get an answer. Please try again.",
     "emptyState": "Ask anything about {symbol} based on live price, key levels, guidance, and recent news."
   },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "title": "Welcome to Trading Monitor",
+    "subtitle": "Sign in with your email and password to access real-time market data and intelligence.",
+    "email": "Email address",
+    "emailPlaceholder": "admin@trading.local",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "submitting": "Signing in…",
+    "submit": "Sign In",
+    "errorInvalid": "Invalid email or password. Please try again.",
+    "errorGeneric": "Unable to sign in. Please try again.",
+    "defaultCredentialsHint": "Default credentials: {email} / {password}"
+  },
   "connection": {
     "offline": "You are offline. Prices and news will update when the connection is back.",
     "serverDownTitle": "Data server not reachable.",
