@@ -126,7 +126,7 @@ app.setErrorHandler((err, _req, reply) => {
 app.get('/api/health', async () => ({ ok: true, realtime: hub.stats }));
 
 const verifyBodySchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 
@@ -135,7 +135,9 @@ app.post('/api/internal/auth/verify', async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ ok: false, error: 'Invalid input' });
   }
-  const user = await users.verifyCredentials(parsed.data.email, parsed.data.password);
+  const cleanEmail = decodePayload(parsed.data.email).trim().toLowerCase();
+  const cleanPassword = decodePayload(parsed.data.password);
+  const user = await users.verifyCredentials(cleanEmail, cleanPassword);
   if (!user) {
     return reply.code(401).send({ ok: false, error: 'Invalid email or password' });
   }

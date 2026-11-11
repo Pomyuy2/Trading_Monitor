@@ -32,7 +32,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const res = await fetch(`${API_URL}/api/internal/auth/verify`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email: rawEmail, password: rawPassword }),
+            body: JSON.stringify({ email, password }),
             signal: AbortSignal.timeout(5000),
           });
 
