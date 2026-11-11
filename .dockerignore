@@ -1,0 +1,10 @@
+node_modules
+web/.next
+web/.next-prod
+logs
+.run
+server/data
+*.db
+*.db-journal
+.git
+.gitignore

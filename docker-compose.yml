@@ -1,0 +1,27 @@
+services:
+  trading-monitor:
+    container_name: trading-monitor-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3003:80"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - HOST=0.0.0.0
+    volumes:
+      - trading-data:/app/server/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:80/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  trading-data:
+    name: trading-monitor-data

@@ -32,7 +32,10 @@ class LiveFeed {
     const env = process.env.NEXT_PUBLIC_WS_URL;
     if (env) return env;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    return `${proto}://${location.hostname}:4000/ws`;
+    if (location.port === '3000') {
+      return `${proto}://${location.hostname}:4000/ws`;
+    }
+    return `${proto}://${location.host}/ws`;
   }
 
   private setState(s: ConnState) {
