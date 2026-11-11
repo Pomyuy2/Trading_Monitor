@@ -1,5 +1,7 @@
 import {
   isIntradayRange,
+  type AskAiResponse,
+  type AskSource,
   type CandleSeries,
   type Guidance,
   type GuidanceStatus,
@@ -532,5 +534,164 @@ export class MarketService {
     );
     if (!job.ready) return { guidance: null, status: job.failed ? 'error' : 'pending', sources };
     return { guidance: job.value, status: job.value ? 'ok' : 'error', sources };
+  }
+
+  /**
+   * Conversational AI assistant grounded in real-time quote, key levels, news, guidance, and analyst estimates.
+   */
+  async askStock(
+    symbol: string,
+    question: string,
+    lang: Lang,
+    history: { role: 'user' | 'assistant'; content: string }[] = [],
+  ): Promise<AskAiResponse> {
+    const [quote, levels, news, insight, events] = await Promise.all([
+      settle(this.quote(symbol, true)),
+      settle(this.levels(symbol, '1D')),
+      settle(this.news(symbol, lang)),
+      settle(this.insight(symbol, lang)),
+      settle(this.events(symbol)),
+    ]);
+
+    const sources: AskSource[] = [];
+    if (news && news.items.length > 0) {
+      sources.push({
+        id: 'news',
+        label: lang === 'th' ? `ข่าว · ${Math.min(news.items.length, 5)} บทความ` : `News · ${Math.min(news.items.length, 5)} articles`,
+        type: 'news',
+      });
+    }
+    if (quote?.meta) {
+      const timeStr = quote.meta.updatedAt
+        ? new Date(quote.meta.updatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '';
+      sources.push({
+        id: 'price',
+        label: `${lang === 'th' ? 'ราคา' : 'Price'} · ${quote.meta.source}${timeStr ? ' ' + timeStr : ''}`,
+        type: 'price',
+      });
+    }
+    if (levels) {
+      sources.push({
+        id: 'levels',
+        label: `${lang === 'th' ? 'แนวรับแนวต้าน' : 'Key levels'} · 1D`,
+        type: 'levels',
+      });
+    }
+    if (insight?.guidance || (insight?.guidanceSources && insight.guidanceSources.length > 0)) {
+      sources.push({
+        id: 'guidance',
+        label: `Guidance · ${insight.guidance?.meta?.source ?? 'SEC EDGAR'}`,
+        type: 'guidance',
+      });
+    }
+    if (insight?.priceTargets || insight?.estimates || insight?.ratings) {
+      sources.push({
+        id: 'analyst',
+        label: `${lang === 'th' ? 'นักวิเคราะห์' : 'Analyst'} · ${insight.priceTargets?.meta?.source ?? 'FMP'}`,
+        type: 'analyst',
+      });
+    }
+
+    const facts: string[] = [];
+    facts.push(`TARGET SYMBOL: ${symbol}`);
+    if (quote) {
+      facts.push(
+        `QUOTE: Name=${quote.name ?? symbol}, Price=${quote.price ?? 'N/A'} ${quote.currency}, Change=${quote.change ?? 'N/A'}, ChangePct=${quote.changePct != null ? quote.changePct.toFixed(2) + '%' : 'N/A'}, High=${quote.high ?? 'N/A'}, Low=${quote.low ?? 'N/A'}, Open=${quote.open ?? 'N/A'}, PrevClose=${quote.prevClose ?? 'N/A'}, MarketCap=${quote.marketCap ?? 'N/A'}, PE_TTM=${quote.peTTM ?? 'N/A'}, 52wHigh=${quote.week52High ?? 'N/A'}, 52wLow=${quote.week52Low ?? 'N/A'}, MarketState=${quote.marketState}`,
+      );
+    }
+    if (levels) {
+      const p = levels.pivots;
+      if (p) {
+        facts.push(`PIVOT LEVELS (1D): Pivot=${p.P}, S1=${p.S1}, S2=${p.S2}, R1=${p.R1}, R2=${p.R2}`);
+      }
+      if (levels.supports.length > 0) {
+        facts.push(`SUPPORTS: ${levels.supports.map((s) => `${s.price} (${s.strength})`).join(', ')}`);
+      }
+      if (levels.resistances.length > 0) {
+        facts.push(`RESISTANCES: ${levels.resistances.map((r) => `${r.price} (${r.strength})`).join(', ')}`);
+      }
+    }
+    if (news && news.items.length > 0) {
+      if (news.summary?.text) {
+        facts.push(`RECENT NEWS SUMMARY: ${news.summary.text}`);
+      }
+      facts.push(
+        `RECENT HEADLINES:\n${news.items.slice(0, 8).map((n) => `- ${n.headline} (${n.sentiment ?? 'neutral'}) [Source: ${n.source}]`).join('\n')}`,
+      );
+    }
+    if (insight) {
+      if (insight.profile) {
+        facts.push(`PROFILE: ${insight.profile.description ?? ''} (CEO: ${insight.profile.ceo?.name ?? 'N/A'}, HQ: ${insight.profile.hq ?? 'N/A'})`);
+      }
+      if (insight.guidance) {
+        facts.push(
+          `GUIDANCE (FY ${insight.guidance.fiscalYear ?? ''}): Revenue=${insight.guidance.revenueGuidance?.value ?? 'N/A'}, EPS=${insight.guidance.epsGuidance?.value ?? 'N/A'}, Priorities=${insight.guidance.priorities.map((p) => p?.value).filter(Boolean).join('; ')}`,
+        );
+      }
+      if (insight.priceTargets) {
+        facts.push(`ANALYST TARGETS: Avg=${insight.priceTargets.avg ?? 'N/A'}, Low=${insight.priceTargets.low ?? 'N/A'}, High=${insight.priceTargets.high ?? 'N/A'}`);
+      }
+      if (insight.ratings) {
+        facts.push(`RATINGS: Buy=${insight.ratings.buy ?? 0}, Hold=${insight.ratings.hold ?? 0}, Sell=${insight.ratings.sell ?? 0}`);
+      }
+      if (insight.earnings?.date) {
+        facts.push(`NEXT EARNINGS DATE: ${insight.earnings.date}`);
+      }
+    }
+    if (events && events.earnings.length > 0) {
+      const recent = events.earnings[0];
+      facts.push(
+        `LATEST EARNINGS EVENT: Date=${recent.date}, EPS Actual=${recent.epsActual ?? 'N/A'} vs Est=${recent.epsEstimate ?? 'N/A'}, Rev Actual=${recent.revenueActual ?? 'N/A'} vs Est=${recent.revenueEstimate ?? 'N/A'}`,
+      );
+    }
+
+    const isThai = lang === 'th' || /[\u0E00-\u0E7F]/.test(question);
+    const systemInstruction = `You are an AI financial market assistant inside the Trading Monitor app.
+You provide clear, accurate, and objective answers about ${symbol} to help users understand what the market data shows.
+
+CRITICAL RULES:
+1. STRICT GROUNDING: Ground your answers firmly in the verified data provided below. Do not hallucinate or invent news, guidance, or price levels. If the requested information is not in the data, state that clearly.
+2. FINANCIAL COMPLIANCE:
+   - NEVER give investment or financial advice.
+   - NEVER use "buy", "sell", "hold", or recommend taking a financial position.
+   - Maintain a neutral, factual, and analytical tone at all times.
+3. LANGUAGE:
+   - ${isThai ? 'Respond in fluent, natural Thai.' : 'Respond in clear English.'}
+4. FORMATTING & STYLE:
+   - Use GitHub-flavored Markdown.
+   - Bold key numbers, price values, percentages, and price levels (e.g. **$168.89**, **-3.14%**, **$172.50**, **S1 $166.10**, **R1 $171.40**).
+   - Use bullet points with bold prefixes for key factors/drivers (e.g. "• **Sector pullback**: ...").
+   - Keep answers well-structured, concise, and easy to read.
+
+VERIFIED DATA FOR ${symbol}:
+${facts.join('\n\n')}`;
+
+    const conversationMessages = [
+      { role: 'system' as const, content: systemInstruction },
+      ...history.slice(-6).map((m) => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content })),
+      { role: 'user' as const, content: question },
+    ];
+
+    const activeAi = this.ai.llm ?? (this.providers.mockCapabilities().length > 0 ? this.ai.mock : this.ai.keyword);
+    let answer = '';
+    if (activeAi.ask) {
+      try {
+        answer = await activeAi.ask(conversationMessages);
+      } catch (err) {
+        if (this.ai.mock.ask) {
+          answer = await this.ai.mock.ask(conversationMessages);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const modelName = (activeAi as unknown as { model?: string }).model ?? activeAi.name.split(' · ')[0] ?? activeAi.name;
+    return {
+      answer: answer.trim(),
+      sources,
+      model: modelName,
+    };
   }
 }

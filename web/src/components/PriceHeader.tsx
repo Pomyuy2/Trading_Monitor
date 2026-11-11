@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, addToWatchlist, useAlerts, useWatchlist } from '@/lib/api';
 import { direction, fmtPrice, fmtTime } from '@/lib/format';
 import { useConnState } from '@/lib/live';
-import { BellIcon, CheckIcon, CompareIcon, PlusIcon, XIcon } from './icons';
+import { BellIcon, CheckIcon, CompareIcon, PlusIcon, SparkIcon, XIcon } from './icons';
 import { btn, Change, cx, ErrorState, Skeleton, SourceLine, useLang } from './ui';
 
 interface Props {
@@ -19,9 +19,10 @@ interface Props {
   maxCompares: number;
   onAlert: () => void;
   onCompare: () => void;
+  onAskAi?: () => void;
 }
 
-export function PriceHeader({ symbol, quote, error, streaming, onRetry, compareCount, maxCompares, onAlert, onCompare }: Props) {
+export function PriceHeader({ symbol, quote, error, streaming, onRetry, compareCount, maxCompares, onAlert, onCompare, onAskAi }: Props) {
   const t = useTranslations();
   const lang = useLang();
 
@@ -69,6 +70,17 @@ export function PriceHeader({ symbol, quote, error, streaming, onRetry, compareC
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {onAskAi && (
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-accent/40 bg-accent/15 px-3.5 text-sm font-medium text-accent hover:border-accent hover:bg-accent/25 transition-colors"
+              onClick={onAskAi}
+              aria-keyshortcuts="A"
+              title={`${t('price.askAi')} (A)`}
+            >
+              <SparkIcon width={16} height={16} /> {t('price.askAi')}
+            </button>
+          )}
           <WatchButton symbol={symbol} />
           <AlertButton symbol={symbol} onClick={onAlert} disabled={!quote} />
           <button

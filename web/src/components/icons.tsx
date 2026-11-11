@@ -46,3 +46,9 @@ export const SunIcon = (p: SVGProps<SVGSVGElement>) => (
 export const MoonIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
 );
+export const ArrowRightIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+);
+export const ChevronLeftIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="m15 18-6-6 6-6" /></svg>
+);

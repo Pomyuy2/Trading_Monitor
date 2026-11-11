@@ -103,6 +103,32 @@ export class RouterAi implements AiService {
     if (!out) throw new Error(`${this.name} returned no sentiment labels`);
     return checkSentiment(items, out);
   }
+
+  async ask(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string> {
+    let res: Response;
+    try {
+      res = await fetch(this.url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: 1500,
+          stream: true,
+          messages,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (err) {
+      throw new Error(`AI request failed: ${(err as Error).name}`);
+    }
+    if (res.status === 429) throw new RateLimitError(this.name, Number(res.headers.get('retry-after')) * 1000 || undefined);
+    if (!res.ok) throw new Error(`AI endpoint HTTP ${res.status}`);
+    return readCompletion(await res.text());
+  }
 }
 
 /** The assistant text of a chat completion: either a JSON body or `data:` lines of a stream. */

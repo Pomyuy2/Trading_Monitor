@@ -58,4 +58,19 @@ export class AnthropicAi implements AiService {
     if (!out) throw new Error('Claude returned no sentiment labels');
     return checkSentiment(items, out);
   }
+
+  async ask(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string> {
+    const system = messages.find((m) => m.role === 'system')?.content;
+    const conversation = messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+    const response = await this.client.messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system,
+      messages: conversation,
+    });
+    const block = response.content[0];
+    return block && 'text' in block ? block.text : '';
+  }
 }

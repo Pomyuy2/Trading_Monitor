@@ -322,6 +322,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['L'], label: 'levels' },
   { keys: ['P'], label: 'pivots' },
   { keys: ['C'], label: 'compare' },
+  { keys: ['A'], label: 'askAi' },
   { keys: ['?'], label: 'help' },
   { keys: ['Esc'], label: 'close' },
 ];

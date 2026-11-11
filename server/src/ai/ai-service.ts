@@ -28,4 +28,7 @@ export interface AiService {
   extractGuidance?(symbol: string, companyName: string | null, docs: SourceDocument[]): Promise<unknown | null>;
   /** Translate display strings; same count and order. Empty strings stay empty. */
   translate?(texts: string[], lang: Lang): Promise<string[]>;
+
+  /** Conversational Q&A grounded in stock data. */
+  ask?(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string>;
 }

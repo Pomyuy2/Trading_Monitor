@@ -2,6 +2,7 @@
 
 import type {
   Alert,
+  AskAiResponse,
   CandleSeries,
   EventsResponse,
   NewAlert,
@@ -199,4 +200,17 @@ export async function setWatchlistGroup(symbol: string, group: string | null) {
       revalidate: false,
     },
   );
+}
+
+/** Ask AI question about a symbol. */
+export async function askAi(
+  symbol: string,
+  question: string,
+  lang: Lang,
+  history?: { role: 'user' | 'assistant'; content: string }[],
+): Promise<AskAiResponse> {
+  return fetchJson<AskAiResponse>('/api/ai/ask', {
+    method: 'POST',
+    body: JSON.stringify({ symbol, question, lang, history }),
+  });
 }

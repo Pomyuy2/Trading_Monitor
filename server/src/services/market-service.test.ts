@@ -233,3 +233,32 @@ describe('news summary freshness', () => {
     expect(calls.tagged).toEqual(['a', 'b', 'c']); // each headline tagged once
   });
 });
+
+describe('askStock', () => {
+  it('returns grounded answer with sources and model name', async () => {
+    const fmp = new FakeDaily('FMP', false);
+    const mockAi: AiService = {
+      name: 'TestAI',
+      sentimentMethod: 'mock',
+      canSummarize: true,
+      canExtract: false,
+      summarizeNews: async () => null,
+      tagSentiment: async () => [],
+      ask: async (messages) => {
+        expect(messages.some((m) => m.role === 'system' && m.content.includes('AAPL'))).toBe(true);
+        return '**Apple (AAPL)** is trading at **$150.00**. Key resistance is **R1 $155.00**.';
+      },
+    };
+    const registry = {
+      for: () => fmp,
+      fallbackFor: () => null,
+      mockCapabilities: () => [],
+    } as unknown as ProviderRegistry;
+    const svc = new MarketService(registry, new LruCache(), { llm: mockAi, keyword: new KeywordAi(), mock: new MockAi() });
+
+    const res = await svc.askStock('AAPL', 'What are the key levels?', 'en');
+    expect(res.answer).toContain('**Apple (AAPL)**');
+    expect(res.model).toBe('TestAI');
+    expect(Array.isArray(res.sources)).toBe(true);
+  });
+});

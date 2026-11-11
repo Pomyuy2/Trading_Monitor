@@ -143,6 +143,30 @@ app.get<{ Params: { symbol: string }; Querystring: { lang?: string } }>('/api/in
   return market.insight(s, parseLang(req.query.lang));
 });
 
+const askBodySchema = z.object({
+  symbol: z.string().min(1).max(15),
+  question: z.string().min(1).max(1000),
+  lang: z.enum(['en', 'th']).optional().default('en'),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().max(2000),
+      }),
+    )
+    .optional(),
+});
+
+app.post('/api/ai/ask', async (req, reply) => {
+  const parsed = askBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'Invalid request body' });
+  }
+  const s = parseSymbol(parsed.data.symbol, reply);
+  if (!s) return;
+  return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
+});
+
 app.get('/api/watchlist', async () => watchlist.list());
 
 app.post<{ Body: { symbol?: string } }>('/api/watchlist', async (req, reply) => {

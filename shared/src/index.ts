@@ -381,4 +381,34 @@ export function normalizeSymbol(s: string): string {
 export function isValidSymbol(s: string): boolean {
   return /^[A-Z0-9.\-^=]{1,15}$/.test(s);
 }
+
+// ---- Ask AI ----
+export interface AskSource {
+  id: string;
+  label: string;
+  type: 'news' | 'price' | 'levels' | 'guidance' | 'analyst' | 'general';
+  url?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: AskSource[];
+  ts: number;
+}
+
+export interface AskAiRequest {
+  symbol: string;
+  question: string;
+  lang: Lang;
+  history?: { role: 'user' | 'assistant'; content: string }[];
+}
+
+export interface AskAiResponse {
+  answer: string;
+  sources: AskSource[];
+  model: string;
+}
+
 export * from './market-hours';

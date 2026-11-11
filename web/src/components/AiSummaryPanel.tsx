@@ -11,9 +11,10 @@ import { cx, Skeleton, useLang } from './ui';
  * The AI news summary, shown right under the price so it's the first thing you read.
  * Shares the news request with NewsCard (SWR de-duplicates it).
  */
-export function AiSummaryPanel({ symbol, onShowNews }: { symbol: string; onShowNews: () => void }) {
+export function AiSummaryPanel({ symbol, onShowNews, onAskAi }: { symbol: string; onShowNews: () => void; onAskAi?: () => void }) {
   const t = useTranslations('news');
   const tc = useTranslations('common');
+  const ta = useTranslations('askAi');
   const lang = useLang();
   const { data, error } = useNews(symbol, lang);
 
@@ -84,6 +85,11 @@ export function AiSummaryPanel({ symbol, onShowNews }: { symbol: string; onShowN
         )}
         <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted">
           {data?.summary && <span>{tc('source', { source: data.summary.meta.source })}</span>}
+          {onAskAi && (
+            <button type="button" onClick={onAskAi} className="inline-flex min-h-11 items-center gap-1 font-medium text-accent hover:underline sm:min-h-0">
+              <SparkIcon width={13} height={13} /> {ta('title')} →
+            </button>
+          )}
           <button type="button" onClick={onShowNews} className="inline-flex min-h-11 items-center font-medium text-accent hover:underline sm:min-h-0">
             {t('seeAllNews')} ↓
           </button>

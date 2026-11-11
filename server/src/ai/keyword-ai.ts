@@ -44,4 +44,11 @@ export class KeywordAi implements AiService {
     // Headline only: snippets often mention unrelated companies and market moves.
     return items.map((i) => keywordSentiment(i.headline));
   }
+
+  async ask(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string> {
+    const isThai = messages.some((m) => m.role === 'system' && m.content.includes('Respond in Thai'));
+    return isThai
+      ? 'โปรดตั้งค่า `ANTHROPIC_API_KEY` หรือ `AI_BASE_URL` ใน `server/.env` เพื่อเปิดใช้งานฟีเจอร์ ถาม AI เต็มรูปแบบ'
+      : 'Please configure `ANTHROPIC_API_KEY` or `AI_BASE_URL` in `server/.env` to enable full Ask AI responses.';
+  }
 }

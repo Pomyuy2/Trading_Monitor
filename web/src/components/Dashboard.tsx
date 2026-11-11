@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMeta } from '@/lib/api';
 import { loadPref, savePref } from '@/lib/prefs';
 import { useLiveQuote } from '@/lib/use-live-quote';
+import { AskAiPanel } from './AskAiPanel';
 import { AiSummaryPanel } from './AiSummaryPanel';
 import { AlertCenter } from './AlertCenter';
 import { AlertsPanel } from './AlertsPanel';
@@ -39,6 +40,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
   const [showPivots, setShowPivots] = useState(initial.pivots);
   const [tab, setTab] = useState<Tab>('news');
   const [compares, setCompares] = useState<string[]>([]);
+  const [showAskAi, setShowAskAi] = useState(false);
   const [dialog, setDialog] = useState<'alert' | 'compare' | 'watchlist' | 'shortcuts' | null>(null);
   const [alertPreset, setAlertPreset] = useState<AlertPreset>(null);
   const live = useLiveQuote(symbol, true);
@@ -90,6 +92,8 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
         togglePivots();
       } else if (k === 'c' || k === 'C') {
         setDialog('compare');
+      } else if (k === 'a' || k === 'A') {
+        setShowAskAi((v) => !v);
       } else if (k === '?') {
         setDialog('shortcuts');
       } else {
@@ -137,6 +141,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
               maxCompares={MAX_COMPARES}
               onAlert={() => openAlert()}
               onCompare={() => setDialog('compare')}
+              onAskAi={() => setShowAskAi(true)}
             />
           </div>
           <div className="area-summary min-w-0">
@@ -146,6 +151,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
                 setTab('news');
                 requestAnimationFrame(() => document.getElementById('news-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
               }}
+              onAskAi={() => setShowAskAi(true)}
             />
           </div>
           <div className="area-chart min-w-0">
@@ -212,6 +218,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       <AlertDialog open={dialog === 'alert'} onClose={() => setDialog(null)} symbol={symbol} quote={live.data} range={range} preset={alertPreset} />
       <CompareDialog open={dialog === 'compare'} onClose={() => setDialog(null)} symbol={symbol} current={compares} max={MAX_COMPARES} onPick={addCompare} />
       <ShortcutsDialog open={dialog === 'shortcuts'} onClose={() => setDialog(null)} />
+      <AskAiPanel open={showAskAi} onClose={() => setShowAskAi(false)} symbol={symbol} quote={live.data} />
       <AlertCenter />
     </div>
   );
