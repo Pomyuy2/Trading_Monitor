@@ -166,13 +166,13 @@ export class MarketService {
   async search(q: string): Promise<SymbolMatch[]> {
     const p = this.providers.for('search');
     const key = `search:${p.name}:${q.toLowerCase()}`;
-    return (await cached(this.cache, key, TTL.search, () => withRateLimitRetry(() => p.searchSymbols(q)))).value;
+    return (await cached(this.cache, key, TTL.search, () => this.withFallback('search', (x) => x.searchSymbols(q)))).value;
   }
 
   /** `detail` also merges key stats (e.g. today's volume) from the keyStats provider. */
   async quote(symbol: string, detail = false): Promise<Quote> {
     const p = this.providers.for('quote');
-    const quote = markStale(await cached(this.cache, `quote:${p.name}:${symbol}`, TTL.quote, () => withRateLimitRetry(() => p.getQuote(symbol))));
+    const quote = markStale(await cached(this.cache, `quote:${p.name}:${symbol}`, TTL.quote, () => this.withFallback('quote', (x) => x.getQuote(symbol))));
     if (!detail) return quote;
     const sp = this.providers.for('keyStats');
     if (sp === p) return quote;
@@ -182,7 +182,7 @@ export class MarketService {
         this.cache,
         `keyStats:${sp.name}:${symbol}`,
         (v: KeyStats) => (v.meta.note === NOT_IN_PLAN ? TTL.notInPlan : TTL.keyStats),
-        () => orNotInPlan(sp.name, () => withRateLimitRetry(() => sp.getKeyStats(symbol)), {} as Omit<KeyStats, 'meta'>),
+        () => orNotInPlan(sp.name, () => this.withFallback('keyStats', (x) => x.getKeyStats(symbol)), {} as Omit<KeyStats, 'meta'>),
       ),
     );
     if (!stats) return quote;
@@ -308,7 +308,7 @@ export class MarketService {
     const dp = this.providers.for('dividends');
     const [earnings, dividends] = await Promise.all([
       settle(cached(this.cache, `events:earnings:${ep.name}:${symbol}`, TTL.events, () => emptyIfNotInPlan(() => withRateLimitRetry(() => ep.getEarningsHistory(symbol, now - 5 * 366 * 86400_000, now + 100 * 86400_000))))),
-      settle(cached(this.cache, `events:dividends:${dp.name}:${symbol}`, TTL.events, () => emptyIfNotInPlan(() => withRateLimitRetry(() => dp.getDividends(symbol))))),
+      settle(cached(this.cache, `events:dividends:${dp.name}:${symbol}`, TTL.events, () => emptyIfNotInPlan(() => this.withFallback('dividends', (x) => x.getDividends(symbol))))),
     ]);
     const cutoff = new Date(now - 5 * 366 * 86400_000).toISOString().slice(0, 10);
     const meta = (r: { storedAt: number; stale: boolean } | null, source: string): SourceMeta | null =>
@@ -462,7 +462,7 @@ export class MarketService {
       return settle(
         cached(this.cache, `${cap}:${p.name}:${symbol}`, ttl, async () => {
           try {
-            return await withRateLimitRetry(() => fn(p));
+            return await this.withFallback(cap, fn);
           } catch (err) {
             const empty = EMPTY_INSIGHT[cap as keyof typeof EMPTY_INSIGHT];
             if (err instanceof ProviderAuthError && empty) {

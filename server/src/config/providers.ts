@@ -1,6 +1,6 @@
 import type { Capability } from '../providers/types.js';
 
-export type ProviderName = 'finnhub' | 'fmp' | 'twelvedata' | 'sec' | 'mock' | 'set';
+export type ProviderName = 'finnhub' | 'fmp' | 'twelvedata' | 'sec' | 'mock' | 'set' | 'yahoo';
 
 /**
  * Which provider serves each capability. Change providers here — UI code
@@ -14,8 +14,8 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
   profile: 'fmp', // Finnhub's executives endpoint is paid; FMP's profile + key-executives are free
   news: 'finnhub',
   keyStats: 'fmp', // today's volume (not in Finnhub's quote)
-  dailyCandles: 'fmp', // 6M, 1Y, 5Y
-  intradayCandles: 'twelvedata', // 1H, 1D, 1W, 1M (FMP intraday is paid)
+  dailyCandles: 'yahoo', // 6M, 1Y, 5Y (free, no daily cap, no RKLB/FLNC exclusions)
+  intradayCandles: 'yahoo', // 1H, 1D, 1W, 1M (free, eliminates Twelve Data 8 req/min crash)
   estimates: 'fmp',
   priceTargets: 'fmp',
   ratings: 'fmp',
@@ -26,9 +26,17 @@ export const CAPABILITY_PROVIDERS: Record<Capability, ProviderName> = {
 };
 
 /**
- * Second choice when the main provider refuses a symbol on the free plan (HTTP 401/402/403).
- * FMP's free plan doesn't cover every stock (e.g. RKLB, FLNC): daily charts then come from Twelve Data.
+ * Second choice when the main provider refuses a symbol on the free plan (HTTP 401/402/403)
+ * or runs out of calls (HTTP 429).
  */
 export const CAPABILITY_FALLBACKS: Partial<Record<Capability, ProviderName>> = {
+  quote: 'yahoo',
+  search: 'yahoo',
+  profile: 'yahoo',
+  priceTargets: 'yahoo',
+  ratings: 'yahoo',
+  keyStats: 'yahoo',
+  dividends: 'yahoo',
   dailyCandles: 'twelvedata',
+  intradayCandles: 'twelvedata',
 };

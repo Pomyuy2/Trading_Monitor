@@ -6,6 +6,7 @@ import { MockProvider } from './mock/mock-provider.js';
 import { SecEdgarProvider } from './sec.js';
 import { SetProvider } from './set.js';
 import { TwelveDataProvider } from './twelvedata.js';
+import { YahooProvider } from './yahoo.js';
 import type { Capability, MarketDataProvider } from './types.js';
 
 interface Logger {
@@ -25,6 +26,7 @@ export class ProviderRegistry {
       twelvedata: new TwelveDataProvider(env.TWELVEDATA_API_KEY),
       sec: new SecEdgarProvider(env.SEC_USER_AGENT),
       set: new SetProvider(),
+      yahoo: new YahooProvider(),
       mock: this.mock,
     };
   }
