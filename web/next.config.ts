@@ -10,6 +10,9 @@ const config: NextConfig = {
   // The Playwright smoke test runs its own next dev; a separate folder avoids clashing with yours.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   transpilePackages: ['@tm/shared'],
+  // The default 30 s is too short for a first AI request on slow models (the server normally answers
+  // within ~15 s and finishes AI work in the background, so this is only a safety net).
+  experimental: { proxyTimeout: 120_000 },
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${API_URL}/api/:path*` }];
   },

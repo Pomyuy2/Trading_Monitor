@@ -26,7 +26,9 @@ export function NewsCard({ symbol }: { symbol: string }) {
           <SourceLine meta={data?.meta} />
           {data?.sentimentMethod && (
             <p className="text-xs text-muted">
-              {data.sentimentMethod === 'keywords' ? t('sentimentKeywords') : t('sentimentBy', { source: data.sentimentSource ?? '' })}
+              {data.sentimentMethod === 'keywords'
+                ? t(data.aiPending ? 'sentimentPending' : 'sentimentKeywords')
+                : t('sentimentBy', { source: data.sentimentSource ?? '' })}
             </p>
           )}
         </div>
@@ -57,6 +59,10 @@ export function NewsCard({ symbol }: { symbol: string }) {
                 </p>
                 <p className="mt-1 text-[11px] text-muted">{t('aiDisclaimer')}</p>
               </>
+            ) : data.summaryStatus === 'pending' ? (
+              <p className="mt-2 animate-pulse text-sm text-muted" role="status">
+                {t('summaryPending')}
+              </p>
             ) : (
               <p className="mt-2 text-sm text-muted">
                 — {t(data.summaryStatus === 'disabled' ? 'summaryOff' : data.summaryStatus === 'no-recent' ? 'summaryNoRecent' : 'noSummary')}

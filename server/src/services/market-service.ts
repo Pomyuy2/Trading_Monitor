@@ -96,10 +96,16 @@ function mentions(n: NewsItem, symbol: string, companyName: string | null): bool
 }
 const MAX_SUMMARY_ARTICLES = 25;
 const SENTIMENT_BATCH = 40;
+/** How long a news request waits for the AI before answering with keyword tags / "summary on its way". */
+const AI_WAIT_MS = 6_000;
+const AI_RETRY_AFTER_MS = 5 * 60_000;
+/** Guidance reads long filings; the insight request waits a bit longer before saying "still reading". */
+const GUIDANCE_WAIT_MS = 15_000;
+const PENDING = Symbol('pending');
 
 export interface AiServices {
-  /** Claude, when ANTHROPIC_API_KEY is set. */
-  claude: AiService | null;
+  /** The AI model: Claude (ANTHROPIC_API_KEY) or an OpenAI-compatible router (AI_BASE_URL + AI_API_KEY + AI_MODEL). */
+  llm: AiService | null;
   keyword: AiService;
   mock: AiService;
 }
@@ -111,7 +117,42 @@ export class MarketService {
     private readonly ai: AiServices,
     /** Persistent cache for AI outputs (defaults to the regular cache). */
     private readonly aiCache: Cache = cache,
+    private readonly opts: { aiWaitMs?: number } = {},
   ) {}
+
+  private readonly aiJobs = new Map<string, Promise<unknown>>();
+  private readonly aiFailedAt = new Map<string, number>();
+
+  /**
+   * Start (or join) a background AI job and wait at most `aiWaitMs` for it. A slow model never holds up
+   * the page: the caller shows a fallback meanwhile, the job finishes and fills the AI cache, and the
+   * next request picks it up. After a failure the job isn't retried for AI_RETRY_AFTER_MS.
+   */
+  private async aiJob<T>(key: string, fn: () => Promise<T>, waitMs = this.opts.aiWaitMs ?? AI_WAIT_MS): Promise<{ ready: true; value: T } | { ready: false; failed: boolean }> {
+    const failedAt = this.aiFailedAt.get(key);
+    if (failedAt && Date.now() - failedAt < AI_RETRY_AFTER_MS) return { ready: false, failed: true };
+    let job = this.aiJobs.get(key) as Promise<T> | undefined;
+    if (!job) {
+      job = fn();
+      this.aiJobs.set(key, job);
+      job
+        .then(
+          () => this.aiFailedAt.delete(key),
+          () => this.aiFailedAt.set(key, Date.now()),
+        )
+        .finally(() => this.aiJobs.delete(key));
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<typeof PENDING>((r) => (timer = setTimeout(() => r(PENDING), waitMs)));
+    try {
+      const v = await Promise.race([job, waited]);
+      return v === PENDING ? { ready: false, failed: false } : { ready: true, value: v as T };
+    } catch {
+      return { ready: false, failed: true };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   async search(q: string): Promise<SymbolMatch[]> {
     const p = this.providers.for('search');
@@ -271,17 +312,17 @@ export class MarketService {
     };
   }
 
-  /** Real headlines get Claude (if a key is set) or keyword rules; mock headlines get the mock AI. */
+  /** Real headlines get the AI model (if configured) or keyword rules; mock headlines get the mock AI. */
   private aiFor(provider: MarketDataProvider): AiService {
     if (provider instanceof MockProvider) return this.ai.mock;
-    return this.ai.claude ?? this.ai.keyword;
+    return this.ai.llm ?? this.ai.keyword;
   }
 
   /**
-   * Sentiment per headline, cached per article id so each headline is classified once.
-   * If the AI call fails, falls back to keyword rules for this response (not cached).
+   * AI sentiment per headline, cached per article id so each headline is classified once.
+   * Throws if the AI fails (the caller then shows keyword tags).
    */
-  private async tagSentiment(ai: AiService, symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
+  private async aiSentiment(ai: AiService, symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
     const labels = new Map<string, Sentiment>();
     const todo: NewsItem[] = [];
     for (const it of items) {
@@ -292,24 +333,23 @@ export class MarketService {
         else todo.push(it);
       }
     }
-    let method: SentimentMethod = ai.sentimentMethod;
-    let source = ai.name;
     for (let i = 0; i < todo.length; i += SENTIMENT_BATCH) {
       const batch = todo.slice(i, i + SENTIMENT_BATCH);
-      try {
-        const tags = await ai.tagSentiment(symbol, batch);
-        for (const [j, it] of batch.entries()) {
-          labels.set(it.id, tags[j]);
-          await this.aiCache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
-        }
-      } catch {
-        const tags = await this.ai.keyword.tagSentiment(symbol, batch);
-        batch.forEach((it, j) => labels.set(it.id, tags[j]));
-        method = 'keywords';
-        source = this.ai.keyword.name;
+      const tags = await ai.tagSentiment(symbol, batch);
+      for (const [j, it] of batch.entries()) {
+        labels.set(it.id, tags[j]);
+        await this.aiCache.set(`sentiment:${ai.name}:${it.id}`, tags[j], TTL.sentiment);
       }
     }
-    return { items: items.map((it) => ({ ...it, sentiment: labels.get(it.id) ?? null })), method, source };
+    return { items: items.map((it) => ({ ...it, sentiment: labels.get(it.id) ?? null })), method: ai.sentimentMethod, source: ai.name };
+  }
+
+  /** Keyword-rule tags (no AI) — used while the AI is busy or unavailable. */
+  private async keywordSentiment(symbol: string, items: NewsItem[]): Promise<{ items: NewsItem[]; method: SentimentMethod; source: string }> {
+    const todo = items.filter((it) => !it.sentiment);
+    const tags = await this.ai.keyword.tagSentiment(symbol, todo);
+    const byId = new Map(todo.map((it, j) => [it.id, tags[j]]));
+    return { items: items.map((it) => (it.sentiment ? it : { ...it, sentiment: byId.get(it.id) ?? null })), method: 'keywords', source: this.ai.keyword.name };
   }
 
   async news(symbol: string, lang: Lang): Promise<NewsResponse> {
@@ -318,39 +358,59 @@ export class MarketService {
     const now = Date.now();
     // Headline list: the last 3 days (weekends are quiet). The AI summary uses only the last 24 h.
     const quote = await settle(this.quote(symbol));
-    const res = await cached(this.cache, `news:${p.name}:${ai.name}:${symbol}`, TTL.news, async () => {
+    const res = await cached(this.cache, `news:${p.name}:${symbol}`, TTL.news, async () => {
       const raw = await withRateLimitRetry(() => p.getNews(symbol, now - 3 * 86400_000, now));
       const sorted = raw.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
       // Providers tag many market-wide stories to big tickers; prefer ones that mention the company.
       const relevant = sorted.filter((n) => mentions(n, symbol, quote?.name ?? null));
-      const latest = (relevant.length >= MIN_RELEVANT ? relevant : sorted).slice(0, MAX_HEADLINES);
-      return this.tagSentiment(ai, symbol, latest);
+      return (relevant.length >= MIN_RELEVANT ? relevant : sorted).slice(0, MAX_HEADLINES);
     });
-    const { items, method, source } = res.value;
+    const headlines = res.value;
     const meta: SourceMeta = {
       source: p.name,
       updatedAt: new Date(res.storedAt).toISOString(),
       ...(res.stale ? { stale: true, note: STALE_NOTE } : {}),
     };
-    const base = { symbol, lang, items, sentimentMethod: items.length ? method : null, sentimentSource: items.length ? source : null, meta };
+    const recent = headlines.filter((n) => Date.parse(n.publishedAt) >= Date.now() - 24 * 3600_000).slice(0, MAX_SUMMARY_ARTICLES);
+    const wantSummary = ai.canSummarize && recent.length > 0;
 
-    if (!ai.canSummarize) return { ...base, summary: null, summaryStatus: 'disabled' };
-    const recent = items.filter((n) => Date.parse(n.publishedAt) >= Date.now() - 24 * 3600_000).slice(0, MAX_SUMMARY_ARTICLES);
-    if (recent.length === 0) return { ...base, summary: null, summaryStatus: 'no-recent' };
+    // Sentiment and summary run side by side, in the background if the model is slow.
+    const [tagged, summary] = await Promise.all([
+      this.aiJob(`sentiment:${ai.name}:${symbol}`, () => this.aiSentiment(ai, symbol, headlines)),
+      wantSummary
+        ? this.aiJob(`newsSummary:${ai.name}:${symbol}:${lang}`, () =>
+            cached(this.aiCache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
+              ai.summarizeNews(symbol, quote?.name ?? null, lang, recent, quote?.changePct ?? null),
+            ),
+          )
+        : null,
+    ]);
+    // A job started for an older headline list may not cover the current one; use keywords for this response.
+    const tagsFit = tagged.ready && headlines.every((h) => tagged.value.items.some((x) => x.id === h.id));
+    const { items, method, source } = tagged.ready && tagsFit ? tagged.value : await this.keywordSentiment(symbol, headlines);
+    const sentimentPending = !tagged.ready && !tagged.failed;
+    const base = {
+      symbol,
+      lang,
+      items,
+      sentimentMethod: items.length ? method : null,
+      sentimentSource: items.length ? source : null,
+      meta,
+    };
 
-    const sRes = await settle(
-      cached(this.aiCache, `newsSummary:${ai.name}:${symbol}:${lang}`, TTL.newsSummary, () =>
-        ai.summarizeNews(symbol, quote?.name ?? null, lang, recent, quote?.changePct ?? null),
-      ),
-    );
-    if (!sRes?.value) return { ...base, summary: null, summaryStatus: 'error' };
+    if (!ai.canSummarize) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'disabled' };
+    if (!summary) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'no-recent' };
+    if (!summary.ready) return { ...base, aiPending: sentimentPending || !summary.failed, summary: null, summaryStatus: summary.failed ? 'error' : 'pending' };
+    const s = summary.value;
+    if (!s.value) return { ...base, aiPending: sentimentPending, summary: null, summaryStatus: 'error' };
     return {
       ...base,
+      aiPending: sentimentPending,
       summary: {
-        text: sRes.value.text,
-        articleCount: sRes.value.articleCount,
+        text: s.value.text,
+        articleCount: s.value.articleCount,
         lang,
-        meta: { source: sRes.value.source, updatedAt: new Date(sRes.storedAt).toISOString() },
+        meta: { source: s.value.source, updatedAt: new Date(s.storedAt).toISOString() },
       },
       summaryStatus: 'ok',
     };
@@ -411,25 +471,29 @@ export class MarketService {
     const sources = docs.map(({ title, date, url }) => ({ title, date, url }));
     if (docs.length === 0) return { guidance: null, status: 'no-source', sources };
 
-    const ai = this.ai.claude;
+    const ai = this.ai.llm;
     if (!ai?.canExtract || !ai.extractGuidance) return { guidance: null, status: 'disabled', sources };
 
     const docKey = docs.map((d) => `${d.date}:${d.url}`).join('|');
-    try {
-      const en = (
-        await cached(this.aiCache, `guidance:en:${symbol}:${docKey}`, ttl, async () => {
-          const raw = await ai.extractGuidance!(symbol, companyName, docs);
-          return raw ? finalizeGuidance(raw, docs, { source: `${p.name} · ${ai.name}`, updatedAt: new Date().toISOString() }) : null;
-        })
-      ).value;
-      if (!en) return { guidance: null, status: 'error', sources };
-      if (lang === 'en' || !ai.translate) return { guidance: en, status: 'ok', sources };
-      const tr = await settle(
-        cached(this.aiCache, `guidance:${lang}:${symbol}:${docKey}`, ttl, async () => withTexts(en, await ai.translate!(guidanceTexts(en), lang))),
-      );
-      return { guidance: tr?.value ?? en, status: 'ok', sources };
-    } catch {
-      return { guidance: null, status: 'error', sources };
-    }
+    // Runs in the background if the model is slow; the card says "still reading" and asks again.
+    const job = await this.aiJob(
+      `guidance:${ai.name}:${lang}:${symbol}:${docKey}`,
+      async (): Promise<Guidance | null> => {
+        const en = (
+          await cached(this.aiCache, `guidance:en:${symbol}:${docKey}`, ttl, async () => {
+            const raw = await ai.extractGuidance!(symbol, companyName, docs);
+            return raw ? finalizeGuidance(raw, docs, { source: `${p.name} · ${ai.name}`, updatedAt: new Date().toISOString() }) : null;
+          })
+        ).value;
+        if (!en || lang === 'en' || !ai.translate) return en;
+        const tr = await settle(
+          cached(this.aiCache, `guidance:${lang}:${symbol}:${docKey}`, ttl, async () => withTexts(en, await ai.translate!(guidanceTexts(en), lang))),
+        );
+        return tr?.value ?? en;
+      },
+      this.opts.aiWaitMs ?? GUIDANCE_WAIT_MS,
+    );
+    if (!job.ready) return { guidance: null, status: job.failed ? 'error' : 'pending', sources };
+    return { guidance: job.value, status: job.value ? 'ok' : 'error', sources };
   }
 }

@@ -139,6 +139,13 @@ function GuidanceCard({ data }: { data: InsightResponse | null }) {
     >
       {!data ? (
         <LoadingRows n={6} />
+      ) : !g && data.guidanceStatus === 'pending' ? (
+        <div className="space-y-3">
+          <p className="animate-pulse text-sm text-muted" role="status">
+            {t('guidancePending')}
+          </p>
+          <SourceLinks sources={data.guidanceSources} />
+        </div>
       ) : !g ? (
         <div className="space-y-3">
           <Missing

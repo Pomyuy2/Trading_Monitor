@@ -14,6 +14,10 @@ export const envSchema = z.object({
   FMP_API_KEY: opt(z.string().optional()),
   TWELVEDATA_API_KEY: opt(z.string().optional()),
   ANTHROPIC_API_KEY: opt(z.string().optional()),
+  // Alternative to Claude: any OpenAI-compatible chat endpoint (e.g. a model router). All three are needed.
+  AI_BASE_URL: opt(z.string().url().optional()),
+  AI_API_KEY: opt(z.string().optional()),
+  AI_MODEL: opt(z.string().optional()),
   // SEC asks automated clients to identify themselves (e.g. "Your Name your@email.com").
   SEC_USER_AGENT: opt(z.string().default('TradingMonitor personal research app')),
   // Contact for Web Push (VAPID): a mailto: or https: URL. Push services may reject a placeholder.

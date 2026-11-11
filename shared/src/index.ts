@@ -137,7 +137,7 @@ export interface NewsSummary {
 }
 
 /** Why there is (or isn't) a summary. */
-export type SummaryStatus = 'ok' | 'disabled' | 'no-recent' | 'error';
+export type SummaryStatus = 'ok' | 'disabled' | 'no-recent' | 'error' | 'pending';
 /** How sentiment tags were produced. */
 export type SentimentMethod = 'ai' | 'keywords' | 'mock';
 
@@ -150,6 +150,8 @@ export interface NewsResponse {
   items: NewsItem[];
   sentimentMethod: SentimentMethod | null;
   sentimentSource: string | null;
+  /** The AI is still working on tags or the summary (shown meanwhile: keyword tags / "writing…"); ask again soon. */
+  aiPending?: boolean;
   meta: SourceMeta;
 }
 
@@ -232,7 +234,7 @@ export interface SourceDocument {
   text: string;
 }
 
-export type GuidanceStatus = 'ok' | 'disabled' | 'no-source' | 'error';
+export type GuidanceStatus = 'ok' | 'disabled' | 'no-source' | 'error' | 'pending';
 
 export interface InsightResponse {
   symbol: string;

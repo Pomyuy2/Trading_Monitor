@@ -1,4 +1,5 @@
-import type { CandleSeries, Range } from '@tm/shared';
+import type { CandleSeries, NewsItem, Range } from '@tm/shared';
+import type { AiService } from '../ai/ai-service.js';
 import { describe, expect, it, vi } from 'vitest';
 import { LruCache } from '../cache/cache.js';
 import { KeywordAi } from '../ai/keyword-ai.js';
@@ -34,7 +35,7 @@ function service(primary: FakeDaily, fallback: FakeDaily | null) {
     for: () => primary,
     fallbackFor: () => fallback,
   } as unknown as ProviderRegistry;
-  return new MarketService(registry, new LruCache(), { claude: null, keyword: new KeywordAi(), mock: new MockAi() });
+  return new MarketService(registry, new LruCache(), { llm: null, keyword: new KeywordAi(), mock: new MockAi() });
 }
 
 describe('provider fallback (free plan refuses a symbol)', () => {
@@ -86,12 +87,59 @@ describe('provider fallback (free plan refuses a symbol)', () => {
     const q = new QuoteOnly('Finnhub', false);
     const fmp = new StatsRefused('FMP', true);
     const registry = { for: (cap: Capability) => (cap === 'keyStats' ? fmp : q), fallbackFor: () => null } as unknown as ProviderRegistry;
-    const svc = new MarketService(registry, new LruCache(), { claude: null, keyword: new KeywordAi(), mock: new MockAi() });
+    const svc = new MarketService(registry, new LruCache(), { llm: null, keyword: new KeywordAi(), mock: new MockAi() });
     await svc.quote('RKLB', true);
     await new Promise((r) => setTimeout(r, 10));
     const again = await svc.quote('RKLB', true);
     expect(fmp.statsCalls).toBe(1);
     expect(again.volume).toBeNull();
+  });
+
+  it('answers news at once while a slow AI works in the background, then serves the AI result', async () => {
+    const headlines: NewsItem[] = [0, 1].map((i) => ({
+      id: `h${i}`,
+      headline: i ? 'Apple shares surge on record profit' : 'Apple faces lawsuit',
+      snippet: '',
+      source: 'Wire',
+      url: 'https://example.com',
+      publishedAt: new Date(Date.now() - 3600_000).toISOString(),
+      sentiment: null,
+    }) as unknown as NewsItem);
+    class NewsSource extends FakeDaily {
+      async getNews() {
+        return headlines.map((h) => ({ ...h }));
+      }
+      async getQuote(symbol: string) {
+        return { symbol, name: 'Apple Inc', changePct: 1 } as never;
+      }
+    }
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slowAi: AiService = {
+      name: 'SlowAI',
+      sentimentMethod: 'ai',
+      canSummarize: true,
+      canExtract: false,
+      tagSentiment: async (_s, items) => (await gate, items.map(() => 'neutral' as const)),
+      summarizeNews: async () => (await gate, { text: 'Summary.', articleCount: 2, source: 'SlowAI' }),
+    };
+    const src = new NewsSource('Finnhub', false);
+    const registry = { for: () => src, fallbackFor: () => null } as unknown as ProviderRegistry;
+    const svc = new MarketService(registry, new LruCache(), { llm: slowAi, keyword: new KeywordAi(), mock: new MockAi() }, undefined, { aiWaitMs: 20 });
+
+    const first = await svc.news('AAPL', 'en');
+    expect(first.aiPending).toBe(true);
+    expect(first.summaryStatus).toBe('pending');
+    expect(first.sentimentMethod).toBe('keywords');
+    expect(first.items.map((x) => x.sentiment)).toEqual(['negative', 'positive']);
+
+    release();
+    await new Promise((r) => setTimeout(r, 30));
+    const second = await svc.news('AAPL', 'en');
+    expect(second.aiPending).toBe(false);
+    expect(second.summary?.text).toBe('Summary.');
+    expect(second.sentimentSource).toBe('SlowAI');
+    expect(second.items.map((x) => x.sentiment)).toEqual(['neutral', 'neutral']);
   });
 
   it('marks analyst data the plan does not include, instead of failing silently', async () => {

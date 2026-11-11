@@ -17,7 +17,7 @@ It runs on your own PC with free data plans, and works without any API keys in d
 - **Support & resistance** zones and pivot points, with a Key levels card (neutral wording only).
 - **Key stats**: open, day range, previous close, volume, average volume, market cap, P/E, 52-week range,
   dividend yield.
-- **News** with Positive / Negative / Neutral tags, and an AI summary when an Anthropic key is set.
+- **News** with Positive / Negative / Neutral tags, and an AI summary when an AI key is set (Anthropic, or an OpenAI-compatible model router).
 - **Company insight**: CEO, CFO, HQ, employees; next-year guidance from the latest SEC filings
   (extracted by AI, every value backed by a quote from the filing); analyst estimates, price targets,
   ratings and the next earnings date.
@@ -79,6 +79,7 @@ pnpm app:autostart on     # start automatically when you sign in to Windows (off
 | `FMP_API_KEY` | Sign up at <https://financialmodelingprep.com> → Dashboard → API key | Daily chart history, volume, company profile, analyst data, earnings, dividends |
 | `TWELVEDATA_API_KEY` | Sign up at <https://twelvedata.com> → Dashboard → API Keys | Intraday charts (1H, 1D, 1W, 1M) |
 | `ANTHROPIC_API_KEY` *(optional)* | <https://console.anthropic.com> → API Keys. **Separate from a Claude.ai subscription** (pay-as-you-go; set a monthly limit there) | News summaries, AI sentiment, guidance extraction + Thai translation |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` *(optional, instead of Anthropic)* | Any OpenAI-compatible chat endpoint, e.g. a model router (`https://…/v1`), its key and model name. Used only when `ANTHROPIC_API_KEY` is empty | The same AI features |
 
 Any missing key falls back to demo data for that part (or turns that AI feature off), so the app always runs.
 Never commit `server/.env` — it is git-ignored.
@@ -102,6 +103,7 @@ Other settings in `server/.env` (all optional, empty = default):
 | **FMP** | 250 calls/day; earnings history limited to 5 rows; intraday charts and earnings-call transcripts are paid; **some stocks are not covered at all** (e.g. RKLB, FLNC: only the profile) | One 5-year daily download per stock per hour serves 6M, 1Y and 5Y; profile cached 1 day, analyst data 12 h. Earnings markers therefore cover about the last year; dividends cover 5 years. For stocks the plan doesn't cover, daily charts and trend lines come from Twelve Data and analyst data says "Not included in the free data plan for this stock" (remembered 12 h). When the daily 250 calls are used up, the app stops calling FMP for a while (1 min, doubling up to 30 min) and serves cached data, with daily charts from Twelve Data. |
 | **SEC EDGAR** | Free, no key; fair use ≤ 10 requests/s | Filings list and text cached 12 h; used instead of paid earnings-call transcripts. |
 | **Anthropic** *(optional)* | Pay per use (≈ $2 / $10 per million input / output tokens for Claude Sonnet 5.5) | Summaries cached 15 min per stock and language; each headline tagged once (7 days); guidance cached until the next earnings date. AI results are stored in the database so restarts don't repeat them. |
+| **Model router** *(optional)* | Depends on the router | Same caching as above. The first AI request for a stock can take 10–60 s: the page doesn't wait — news shows keyword tags and "Writing the AI summary…", guidance shows "AI is reading the filings…", and both fill in by themselves. If the AI fails, it's retried after 5 minutes. |
 
 When a provider rate-limits or fails, the app shows the last cached data marked **Stale** rather than an error.
 
@@ -176,7 +178,8 @@ Allow notifications for `localhost` (lock icon in the address bar) and check Win
 Not Disturb. The in-app pop-up shows either way.
 
 **"AI summary is off" / "Guidance extraction is off"**
-Expected without `ANTHROPIC_API_KEY`. Add the key to `server/.env` and restart.
+Expected without an AI key. Add `ANTHROPIC_API_KEY` — or `AI_BASE_URL` + `AI_API_KEY` + `AI_MODEL` for a model router — to
+`server/.env` and restart (`pnpm app:restart`). The server log line `AI: …` shows which model is in use.
 
 **Can't install on a phone**
 Phones require HTTPS for installing and push. Use it as a website over Wi-Fi, or put it behind an

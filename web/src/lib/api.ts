@@ -84,12 +84,22 @@ export function useEvents(symbol: string) {
   return useSWR<EventsResponse>(`/api/events/${enc(symbol)}`, fetchJson, { revalidateOnFocus: false, ...noRetryOn404 });
 }
 
+const AI_POLL_MS = 5_000;
+
 export function useNews(symbol: string, lang: Lang) {
-  return useSWR<NewsResponse>(`/api/news/${enc(symbol)}?lang=${lang}`, fetchJson, { refreshInterval: 5 * 60_000, ...noRetryOn404 });
+  // While the AI is still writing (aiPending), ask again every few seconds.
+  return useSWR<NewsResponse>(`/api/news/${enc(symbol)}?lang=${lang}`, fetchJson, {
+    refreshInterval: (d?: NewsResponse) => (d?.aiPending ? AI_POLL_MS : 5 * 60_000),
+    ...noRetryOn404,
+  });
 }
 
 export function useInsight(symbol: string, lang: Lang) {
-  return useSWR<InsightResponse>(`/api/insight/${enc(symbol)}?lang=${lang}`, fetchJson, { revalidateOnFocus: false, ...noRetryOn404 });
+  return useSWR<InsightResponse>(`/api/insight/${enc(symbol)}?lang=${lang}`, fetchJson, {
+    revalidateOnFocus: false,
+    refreshInterval: (d?: InsightResponse) => (d?.guidanceStatus === 'pending' ? AI_POLL_MS : 0),
+    ...noRetryOn404,
+  });
 }
 
 export function useSearch(q: string) {

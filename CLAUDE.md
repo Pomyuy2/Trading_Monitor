@@ -25,9 +25,9 @@ phases or features. This file records what has been built, the decisions behind 
 |---|---|
 | 1 Scaffold + mock data | done |
 | 2 Live prices + chart history | done — live ticks verified in pre-market (NVDA); regular-session check not yet confirmed |
-| 3 News + AI summary + sentiment | done — AI is **off** (no `ANTHROPIC_API_KEY`); keyword-rule sentiment, summary box says AI is off |
+| 3 News + AI summary + sentiment | done — AI **on via a model router** since 2026-11-11 (`AI_*` in `server/.env`, model `combo1`); keyword rules while the AI works / if it fails |
 | 3.5 Support & resistance + pivots | done |
-| 4 Company insight | done — guidance extraction needs the Anthropic key; without it the card links the SEC filings |
+| 4 Company insight | done — guidance extraction runs through the router (verified: NVDA revenue outlook, quote-checked); without AI the card links the SEC filings |
 | 5 Watchlist, search, alerts (+ level alerts) | done |
 | 5.5 Comfort features | done (prefs, crosshair tooltip, market status bar, E/D markers, compare ×2 + SPY, light theme, shortcuts, PWA + push) |
 | 6 Polish | done: error states by cause + connection/offline banner, provider adapter tests on recorded responses, Playwright smoke test (desktop + phone, demo data), full README |
@@ -39,9 +39,10 @@ phases or features. This file records what has been built, the decisions behind 
 Phone alerts: the user does **not** use Telegram; candidates are LINE Official Account, email or the ntfy app (deferred).
 
 Open items / not yet verified:
-- Claude features (news summary, AI sentiment, guidance extraction + Thai translation) are built and
-  type-checked against the SDK but have **never run**: the user has a Claude subscription, not an API
-  key, and chose to run without AI for now. When a key is added, test them first.
+- AI: the user has no Anthropic API key; AI runs through an OpenAI-compatible router the user provided
+  (`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` → `server/src/ai/router-ai.ts`). Summary, sentiment, guidance and Thai
+  translation are verified through it. The direct Claude path (`anthropic-ai.ts`, used when `ANTHROPIC_API_KEY`
+  is set, takes precedence) is type-checked but has never run.
 - Web Push: service worker + server sending are built; Chrome reports the app installable, but push
   hasn't been verified end to end with an installed app. Phone install needs HTTPS.
 - `SetProvider` (Thai SET stocks) is a stub with TODOs.
@@ -56,12 +57,13 @@ pnpm install              # Node >= 20 (developed on Node 24)
 cp server/.env.example server/.env   # then add keys
 pnpm dev                  # development: web http://localhost:3000, server http://localhost:4000
 pnpm app:start            # everyday: production build in the background (see README); app:stop/status/logs/update
-pnpm test                 # vitest: 120 unit/integration tests, no network
+pnpm test                 # vitest: 129 unit/integration tests, no network
 pnpm test:e2e             # Playwright smoke test (32 run + 8 phone-skipped), own ports 3100/4100 + own DB
 cd server && npx tsc --noEmit ; cd ../web && npx tsc --noEmit
 ```
 
-`server/.env`: `FINNHUB_API_KEY`, `FMP_API_KEY`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY` (optional),
+`server/.env`: `FINNHUB_API_KEY`, `FMP_API_KEY`, `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY` (optional) or
+`AI_BASE_URL` + `AI_API_KEY` + `AI_MODEL` (optional OpenAI-compatible router),
 `SEC_USER_AGENT`, `VAPID_SUBJECT`, `MOCK_MARKET_STATE` (mock only). Each missing key falls back to
 `MockProvider` (or turns its AI feature off). Tip for testing alerts any time: comment out
 `FINNHUB_API_KEY` → mock prices tick 24/7.
@@ -99,6 +101,7 @@ API: `/api/search`, `quote/:s` (`?detail=1` adds volume), `candles/:s?range=`, `
 | FMP (`/stable` API) | daily candles (one 5-year call/hour serves 6M/1Y/5Y), today's volume, profile + key executives, estimates, price-target consensus, grades consensus, earnings (`limit` ≤ 5, else 402), dividends | 250 calls/day. Intraday charts and transcripts are paid (402). No "founded" year and no exec start years → shown as "—". |
 | SEC EDGAR | guidance source documents: latest 8-K Item 2.02 Exhibit 99.1 (found via the filing index page's document types) + 10-K MD&A | No key; send `SEC_USER_AGENT`. |
 | Anthropic | `claude-sonnet-5-5` via `@anthropic-ai/sdk` `messages.parse` + `zodOutputFormat` (`zod/v4`); effort low (summary/sentiment/translate), medium (guidance) | Optional. Guidance fields are dropped unless their quote appears verbatim in the filing. |
+| Model router (OpenAI-compatible) | `RouterAi`: `/chat/completions` via fetch; same prompts (`ai/prompts.ts`); JSON Schema put in the system prompt, answer parsed + zod-validated, one retry | Optional, used when no Anthropic key. The user's router (`combo1`) currently maps to a Gemini Flash model. |
 | Mock | fixtures for 10 US symbols, ticks 24/7 | Fallback whenever a key is missing. |
 
 ## Storage
@@ -141,6 +144,11 @@ New migration: `cd server && npx prisma migrate dev --name <name>` (stop the dev
   3100/4100); write to a log file in the scratchpad. The background app does not see code changes until
   `pnpm app:update`; stop it before Prisma migrations (DLL lock).
 - WatchlistItem has `position` + `group`; the order migration back-fills positions from `addedAt`.
+- **AI is slow on first use** (router: 15–45 s for a stock's sentiment + summary). `MarketService.aiJob` runs AI work in the
+  background and waits only 6 s (news) / 15 s (guidance); responses then carry `aiPending` / status `'pending'` and SWR polls
+  every 5 s. Failed jobs cool down 5 min. Next's rewrite proxy times out at 30 s by default → `experimental.proxyTimeout`.
+- The router **always streams** (SSE), even without `stream: true`, injects ~2.8k tokens of its own prompt, and doesn't
+  enforce JSON schemas — `readCompletion` / `extractJson` handle all three.
 - News from Finnhub includes market-wide stories; the service keeps articles that mention the ticker
   or company name (falls back to all if fewer than 5).
 
