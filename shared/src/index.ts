@@ -349,6 +349,7 @@ export interface AlertLevel {
 
 export interface Alert {
   id: string;
+  userId?: string;
   symbol: string;
   kind: AlertKind;
   targetPrice: number | null;

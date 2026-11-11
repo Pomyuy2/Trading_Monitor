@@ -40,8 +40,8 @@ export class PushService {
     this.ready = true;
   }
 
-  async subscribe(s: PushSubscriptionInput) {
-    const data = { p256dh: s.keys.p256dh, auth: s.keys.auth, lang: s.lang === 'th' ? 'th' : 'en' };
+  async subscribe(s: PushSubscriptionInput, userId?: string) {
+    const data = { p256dh: s.keys.p256dh, auth: s.keys.auth, lang: s.lang === 'th' ? 'th' : 'en', userId };
     await this.db.pushSubscription.upsert({ where: { endpoint: s.endpoint }, create: { endpoint: s.endpoint, ...data }, update: data });
   }
 
@@ -53,10 +53,12 @@ export class PushService {
     return this.db.pushSubscription.count();
   }
 
-  /** Send a triggered alert to every subscription; drop ones the push service says are gone. */
+  /** Send a triggered alert to every subscription belonging to the alert owner. */
   async sendAlert(alert: Alert) {
     if (!this.ready) return;
-    const subs = await this.db.pushSubscription.findMany();
+    const subs = await this.db.pushSubscription.findMany({
+      where: alert.userId ? { OR: [{ userId: alert.userId }, { userId: null }] } : {},
+    });
     await Promise.all(
       subs.map(async (s) => {
         const lang = (s.lang === 'th' ? 'th' : 'en') as Lang;

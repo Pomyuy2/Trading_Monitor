@@ -7,25 +7,35 @@ export interface AuthUser {
   name: string | null;
 }
 
+export const DEFAULT_INVITE_CODE = 'Y0DlUkMu@Y';
+export const INVITE_RATE_LIMIT_MAX = 5;
+export const INVITE_RATE_LIMIT_WINDOW_MS = 5 * 60 * 60 * 1000; // 5 hours
+
 export class UserService {
   private readonly defaultEmail: string;
   private readonly defaultPass: string;
+  private readonly inviteCode: string;
+  private defaultUserId: string = 'default-user';
 
   constructor(
     private readonly db: PrismaClient,
-    env: { AUTH_USER_EMAIL?: string; AUTH_USER_PASSWORD?: string } = process.env,
+    env: { AUTH_USER_EMAIL?: string; AUTH_USER_PASSWORD?: string; AUTH_INVITE_CODE?: string } = process.env,
     private readonly log: { info(m: string): void; warn(m: string): void } = console,
   ) {
     this.defaultEmail = (env.AUTH_USER_EMAIL?.trim() || 'admin@trading.local').toLowerCase();
     this.defaultPass = env.AUTH_USER_PASSWORD || 'admin1234';
+    this.inviteCode = env.AUTH_INVITE_CODE?.trim() || DEFAULT_INVITE_CODE;
   }
 
   async init(): Promise<void> {
     try {
-      const count = await this.db.user.count();
-      if (count === 0) {
+      let admin = await this.db.user.findUnique({
+        where: { email: this.defaultEmail },
+      });
+
+      if (!admin) {
         const hash = await bcrypt.hash(this.defaultPass, 10);
-        await this.db.user.create({
+        admin = await this.db.user.create({
           data: {
             email: this.defaultEmail,
             name: 'Admin',
@@ -34,9 +44,35 @@ export class UserService {
         });
         this.log.info(`Initialized default admin user: ${this.defaultEmail}`);
       }
+
+      this.defaultUserId = admin.id;
+
+      // Assign any legacy/unassigned watchlist items or alerts to the admin user
+      await this.db.watchlistItem.updateMany({
+        where: { userId: 'default-user' },
+        data: { userId: admin.id },
+      });
+      await this.db.alert.updateMany({
+        where: { userId: 'default-user' },
+        data: { userId: admin.id },
+      });
     } catch (err) {
       this.log.warn(`User init check failed: ${(err as Error).message}`);
     }
+  }
+
+  async getDefaultUserId(): Promise<string> {
+    if (this.defaultUserId && this.defaultUserId !== 'default-user') {
+      return this.defaultUserId;
+    }
+    const admin = await this.db.user.findUnique({
+      where: { email: this.defaultEmail },
+    });
+    if (admin) {
+      this.defaultUserId = admin.id;
+      return admin.id;
+    }
+    return 'default-user';
   }
 
   async verifyCredentials(email: string, password: string): Promise<AuthUser | null> {
@@ -57,16 +93,116 @@ export class UserService {
 
       // Environment variable fallback check
       if (cleanEmail === this.defaultEmail && password === this.defaultPass) {
-        return { id: 'admin-env', email: this.defaultEmail, name: 'Admin' };
+        return { id: this.defaultUserId, email: this.defaultEmail, name: 'Admin' };
       }
 
       return null;
     } catch {
       // Fallback to env comparison if DB query fails
       if (cleanEmail === this.defaultEmail && password === this.defaultPass) {
-        return { id: 'admin-env', email: this.defaultEmail, name: 'Admin' };
+        return { id: this.defaultUserId, email: this.defaultEmail, name: 'Admin' };
       }
       return null;
     }
+  }
+
+  async checkInviteRateLimit(ip: string): Promise<{ allowed: boolean; remaining: number }> {
+    const windowStart = new Date(Date.now() - INVITE_RATE_LIMIT_WINDOW_MS);
+    const count = await this.db.inviteAttempt.count({
+      where: {
+        ip,
+        createdAt: { gte: windowStart },
+      },
+    });
+
+    const remaining = Math.max(0, INVITE_RATE_LIMIT_MAX - count);
+    return {
+      allowed: count < INVITE_RATE_LIMIT_MAX,
+      remaining,
+    };
+  }
+
+  async recordFailedInvite(ip: string): Promise<number> {
+    await this.db.inviteAttempt.create({ data: { ip } });
+    const { remaining } = await this.checkInviteRateLimit(ip);
+    return remaining;
+  }
+
+  async registerUser(params: {
+    email: string;
+    password: string;
+    inviteCode: string;
+    ip: string;
+    starterSymbols?: string[];
+  }): Promise<
+    | { ok: true; user: AuthUser }
+    | { ok: false; error: 'rate_limited' | 'invalid_invite' | 'email_exists' | 'invalid_input'; remaining?: number }
+  > {
+    const cleanEmail = params.email.trim().toLowerCase();
+    const cleanPass = params.password;
+    const cleanInvite = params.inviteCode.trim();
+
+    if (!cleanEmail || !cleanPass || cleanPass.length < 6) {
+      return { ok: false, error: 'invalid_input' };
+    }
+
+    // 1. Check rate limit for this IP
+    const rateCheck = await this.checkInviteRateLimit(params.ip);
+    if (!rateCheck.allowed) {
+      return { ok: false, error: 'rate_limited', remaining: 0 };
+    }
+
+    // 2. Validate invite code
+    if (cleanInvite !== this.inviteCode) {
+      const remaining = await this.recordFailedInvite(params.ip);
+      if (remaining <= 0) {
+        return { ok: false, error: 'rate_limited', remaining: 0 };
+      }
+      return { ok: false, error: 'invalid_invite', remaining };
+    }
+
+    // 3. Check if email already exists
+    const existing = await this.db.user.findUnique({
+      where: { email: cleanEmail },
+    });
+    if (existing) {
+      return { ok: false, error: 'email_exists' };
+    }
+
+    // 4. Create user
+    const passwordHash = await bcrypt.hash(cleanPass, 10);
+    const user = await this.db.user.create({
+      data: {
+        email: cleanEmail,
+        passwordHash,
+        name: cleanEmail.split('@')[0],
+      },
+    });
+
+    // 5. Seed user's starter watchlist
+    const starters = params.starterSymbols ?? ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL'];
+    const now = Date.now();
+    await this.db.watchlistItem.createMany({
+      data: starters.map((symbol, i) => ({
+        userId: user.id,
+        symbol,
+        position: i,
+        addedAt: new Date(now + i),
+      })),
+    });
+
+    // 6. Clean up old invite attempts for this IP
+    await this.db.inviteAttempt.deleteMany({
+      where: { ip: params.ip },
+    }).catch(() => {});
+
+    return {
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
+    };
   }
 }

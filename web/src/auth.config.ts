@@ -7,9 +7,9 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isOnLogin = nextUrl.pathname.startsWith('/login');
+      const isAuthPage = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup');
 
-      if (isOnLogin) {
+      if (isAuthPage) {
         if (isLoggedIn) {
           return Response.redirect(new URL('/', nextUrl));
         }
@@ -20,8 +20,8 @@ export const authConfig = {
       if (!isLoggedIn) {
         const loginUrl = new URL('/login', nextUrl);
         const target = nextUrl.pathname + nextUrl.search;
-        // Only set callbackUrl if accessing an actual page beyond home or login
-        if (target && target !== '/' && !target.startsWith('/login')) {
+        // Only set callbackUrl if accessing an actual page beyond home or login/signup
+        if (target && target !== '/' && !target.startsWith('/login') && !target.startsWith('/signup')) {
           loginUrl.searchParams.set('callbackUrl', target);
         }
         return Response.redirect(loginUrl);

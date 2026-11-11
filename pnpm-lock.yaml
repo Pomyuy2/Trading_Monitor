@@ -17,6 +17,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^1.6.0
         version: 1.6.0(zod@3.25.76)
+      '@auth/core':
+        specifier: ^0.41.3
+        version: 0.41.3
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0

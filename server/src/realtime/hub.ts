@@ -18,6 +18,7 @@ const clientMessage = z.discriminatedUnion('type', [
  */
 export class RealtimeHub {
   private clients = new Map<WebSocket, Set<string>>();
+  private clientUser = new Map<WebSocket, string>();
   private refCount = new Map<string, number>();
   private lastSent = new Map<string, number>();
   private pending = new Map<string, Tick>();
@@ -34,8 +35,9 @@ export class RealtimeHub {
     return { clients: this.clients.size, symbols: [...this.refCount.keys()] };
   }
 
-  addClient(ws: WebSocket) {
+  addClient(ws: WebSocket, userId?: string) {
     this.clients.set(ws, new Set());
+    if (userId) this.clientUser.set(ws, userId);
     ws.on('message', (raw) => this.onMessage(ws, raw.toString()));
     ws.on('close', () => this.removeClient(ws));
     ws.on('error', () => this.removeClient(ws));
@@ -63,6 +65,7 @@ export class RealtimeHub {
   }
 
   private removeClient(ws: WebSocket) {
+    this.clientUser.delete(ws);
     const subs = this.clients.get(ws);
     if (!subs) return;
     this.clients.delete(ws);
@@ -78,7 +81,23 @@ export class RealtimeHub {
     this.release(symbols);
   }
 
-  /** Push a message to every connected browser (single-user app). */
+  /** Send a message specifically to a user's connected clients. */
+  sendToUser(userId: string, msg: ServerMessage) {
+    const data = JSON.stringify(msg);
+    let sent = false;
+    for (const [ws, u] of this.clientUser.entries()) {
+      if (u === userId && ws.readyState === ws.OPEN) {
+        ws.send(data);
+        sent = true;
+      }
+    }
+    // If no client explicitly tagged (e.g. in single-user or legacy mode), broadcast
+    if (!sent) {
+      this.broadcastAll(msg);
+    }
+  }
+
+  /** Push a message to every connected browser. */
   broadcastAll(msg: ServerMessage) {
     const data = JSON.stringify(msg);
     for (const ws of this.clients.keys()) if (ws.readyState === ws.OPEN) ws.send(data);

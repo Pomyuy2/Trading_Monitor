@@ -85,12 +85,32 @@ export class AlertService {
   }
 
   // ---------- CRUD ----------
-  async list(symbol?: string): Promise<Alert[]> {
-    const rows = await this.db.alert.findMany({ where: symbol ? { symbol } : {}, orderBy: { createdAt: 'desc' } });
+  async list(arg1?: string, arg2?: string): Promise<Alert[]> {
+    let userId: string | undefined;
+    let symbol: string | undefined;
+
+    if (arg2 !== undefined) {
+      userId = arg1;
+      symbol = arg2;
+    } else if (arg1 !== undefined) {
+      if (/^[A-Z0-9.-]{1,15}$/.test(arg1)) {
+        symbol = arg1;
+      } else {
+        userId = arg1;
+      }
+    }
+
+    const rows = await this.db.alert.findMany({
+      where: {
+        ...(userId ? { userId } : {}),
+        ...(symbol ? { symbol } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     return rows.map(toAlert);
   }
 
-  async create(input: NewAlert): Promise<Alert> {
+  async create(input: NewAlert, userId = 'default-user'): Promise<Alert> {
     // The REST quote can lag (e.g. it shows yesterday's close before the open while
     // pre-market trades stream in), so prefer the latest live trade when it's newer.
     const quote = await this.market.quote(input.symbol);
@@ -104,7 +124,7 @@ export class AlertService {
       if (!(t > 0)) throw new BadRequestError('Target price must be positive');
       if (input.kind === 'price_above' && t <= price) throw new BadRequestError('Target must be above the current price');
       if (input.kind === 'price_below' && t >= price) throw new BadRequestError('Target must be below the current price');
-      data = { symbol: input.symbol, kind: input.kind, targetPrice: t };
+      data = { symbol: input.symbol, kind: input.kind, targetPrice: t, userId };
     } else {
       const l = input.level;
       if (!(l.price > 0) || !(l.zoneLow <= l.price && l.price <= l.zoneHigh)) throw new BadRequestError('Invalid level');
@@ -119,6 +139,7 @@ export class AlertService {
         resolution: RANGE_RESOLUTION[l.range],
         // near_level: if price is already within 1 %, wait until it leaves the band first
         armed: input.kind === 'near_level' ? !withinPct(price, l.price) : true,
+        userId,
       };
     }
     const row = await this.db.alert.create({ data });
@@ -126,16 +147,21 @@ export class AlertService {
     return toAlert(row);
   }
 
-  async remove(id: string): Promise<boolean> {
-    const row = await this.db.alert.findUnique({ where: { id } });
+  async remove(id: string, userId?: string): Promise<boolean> {
+    const row = await this.db.alert.findFirst({
+      where: { id, ...(userId ? { userId } : {}) },
+    });
     if (!row) return false;
-    await this.db.alert.delete({ where: { id } });
+    await this.db.alert.delete({ where: { id: row.id } });
     this.untrack(row);
     return true;
   }
 
-  async markSeen(id: string): Promise<void> {
-    await this.db.alert.updateMany({ where: { id }, data: { seen: true } });
+  async markSeen(id: string, userId?: string): Promise<void> {
+    await this.db.alert.updateMany({
+      where: { id, ...(userId ? { userId } : {}) },
+      data: { seen: true },
+    });
   }
 
   // ---------- evaluation ----------
@@ -258,6 +284,7 @@ export class AlertService {
 function toAlert(r: AlertRow): Alert {
   return {
     id: r.id,
+    userId: r.userId,
     symbol: r.symbol,
     kind: r.kind as AlertKind,
     targetPrice: r.targetPrice,

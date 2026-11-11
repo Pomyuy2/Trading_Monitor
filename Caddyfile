@@ -1,7 +1,11 @@
 :80 {
 	# Real-time WebSocket feed
 	handle /ws* {
-		reverse_proxy 127.0.0.1:4000
+		reverse_proxy 127.0.0.1:4000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	# Auth.js / NextAuth endpoints handled by Next.js
@@ -18,6 +22,7 @@
 		reverse_proxy 127.0.0.1:4000 {
 			header_up Host {host}
 			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto https
 		}
 	}
 

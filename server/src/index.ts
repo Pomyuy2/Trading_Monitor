@@ -20,6 +20,14 @@ import { db } from './store/db.js';
 import { PrismaWatchlistStore } from './store/watchlist-store.js';
 import { PushService } from './push/push-service.js';
 import { UserService } from './auth/user-service.js';
+import { getAuthUserFromCookie } from './auth/session.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    userId?: string;
+    userEmail?: string;
+  }
+}
 
 // trustProxy 'loopback': the Next.js dev proxy forwards the real client IP (X-Forwarded-For)
 // so the per-IP rate limit works; headers from non-local peers are ignored.
@@ -44,7 +52,6 @@ const aiCache = new SqliteCache(db); // AI outputs survive restarts
 const market = new MarketService(providers, cache, ai, aiCache);
 const hub = new RealtimeHub(providers.for('realtime'));
 const watchlist = new PrismaWatchlistStore(db, ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL']);
-await watchlist.init();
 const log = { info: (m: string) => app.log.info(m), warn: (m: string) => app.log.warn(m) };
 const alerts = new AlertService(db, market, hub, log);
 providers.for('realtime').onTick((t) => alerts.handleTick(t));
@@ -52,8 +59,15 @@ const push = new PushService(db, env.VAPID_SUBJECT, log);
 await push.init();
 const users = new UserService(db, process.env, log);
 await users.init();
+const defaultAdminId = await users.getDefaultUserId();
+await watchlist.init(defaultAdminId);
+
 alerts.onTriggered((alert) => {
-  hub.broadcastAll({ type: 'alert', alert });
+  if (alert.userId) {
+    hub.sendToUser(alert.userId, { type: 'alert', alert });
+  } else {
+    hub.broadcastAll({ type: 'alert', alert });
+  }
   void push.sendAlert(alert);
 });
 await alerts.init();
@@ -62,6 +76,23 @@ void aiCache.purge().catch(() => {});
 await app.register(cors, { origin: allowedOrigins });
 await app.register(rateLimit, { max: env.RATE_LIMIT_PER_MIN, timeWindow: '1 minute' });
 await app.register(websocket);
+
+// Extract authenticated user from session cookie for all incoming requests
+app.addHook('preHandler', async (req) => {
+  const secret = process.env.AUTH_SECRET;
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader && secret) {
+    const authUser = await getAuthUserFromCookie(cookieHeader, secret);
+    if (authUser) {
+      req.userId = authUser.id;
+      req.userEmail = authUser.email;
+    }
+  }
+});
+
+async function resolveUserId(req: { userId?: string }): Promise<string> {
+  return req.userId || (await users.getDefaultUserId());
+}
 
 // ---------- helpers ----------
 function parseSymbol(raw: string | undefined, reply: FastifyReply): string | null {
@@ -109,6 +140,69 @@ app.post('/api/internal/auth/verify', async (req, reply) => {
     return reply.code(401).send({ ok: false, error: 'Invalid email or password' });
   }
   return { ok: true, user };
+});
+
+const registerBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  inviteCode: z.string().min(1),
+});
+
+app.post('/api/register', async (req, reply) => {
+  const parsed = registerBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ ok: false, error: 'invalid_input', message: 'Invalid registration input' });
+  }
+
+  const cfIp = req.headers['cf-connecting-ip'];
+  const realIp = req.headers['x-real-ip'];
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip =
+    (typeof cfIp === 'string' && cfIp.trim()) ||
+    (typeof realIp === 'string' && realIp.trim()) ||
+    (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) ||
+    req.ip ||
+    '127.0.0.1';
+
+  const result = await users.registerUser({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    inviteCode: parsed.data.inviteCode,
+    ip,
+  });
+
+  if (!result.ok) {
+    if (result.error === 'rate_limited') {
+      return reply.code(429).send({
+        ok: false,
+        error: 'rate_limited',
+        message: 'Too many invalid invite code attempts. Locked for 5 hours.',
+        remaining: 0,
+      });
+    }
+    if (result.error === 'invalid_invite') {
+      return reply.code(400).send({
+        ok: false,
+        error: 'invalid_invite',
+        message: `Invalid invitation code. ${result.remaining ?? 0} attempt(s) remaining.`,
+        remaining: result.remaining,
+      });
+    }
+    if (result.error === 'email_exists') {
+      return reply.code(409).send({
+        ok: false,
+        error: 'email_exists',
+        message: 'Email address is already registered.',
+      });
+    }
+    return reply.code(400).send({
+      ok: false,
+      error: 'invalid_input',
+      message: 'Invalid registration input.',
+    });
+  }
+
+  return reply.code(201).send({ ok: true, user: result.user });
 });
 
 app.get('/api/meta', async (): Promise<MetaResponse> => ({
@@ -187,13 +281,17 @@ app.post('/api/ai/ask', async (req, reply) => {
   return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
 });
 
-app.get('/api/watchlist', async () => watchlist.list());
+app.get('/api/watchlist', async (req) => {
+  const uid = await resolveUserId(req);
+  return watchlist.list(uid);
+});
 
 app.post<{ Body: { symbol?: string } }>('/api/watchlist', async (req, reply) => {
   const s = parseSymbol(req.body?.symbol, reply);
   if (!s) return;
   await market.quote(s); // 404 if the symbol is unknown to the provider
-  return watchlist.add(s);
+  const uid = await resolveUserId(req);
+  return watchlist.add(s, uid);
 });
 
 /** Comma-separated symbols for batch endpoints (max 40, invalid ones dropped). */
@@ -208,7 +306,8 @@ app.get<{ Querystring: { symbols?: string } }>('/api/sparklines', async (req) =>
 app.put('/api/watchlist/order', async (req, reply) => {
   const parsed = z.object({ symbols: z.array(z.string()).max(200) }).safeParse(req.body);
   if (!parsed.success) return reply.code(400).send({ error: 'Invalid order' });
-  return watchlist.reorder(parsed.data.symbols.map(normalizeSymbol).filter(isValidSymbol));
+  const uid = await resolveUserId(req);
+  return watchlist.reorder(parsed.data.symbols.map(normalizeSymbol).filter(isValidSymbol), uid);
 });
 
 app.patch<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req, reply) => {
@@ -216,13 +315,15 @@ app.patch<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req, 
   if (!s) return;
   const parsed = z.object({ group: z.string().max(100).nullable() }).safeParse(req.body);
   if (!parsed.success) return reply.code(400).send({ error: 'Invalid group' });
-  return watchlist.setGroup(s, parsed.data.group);
+  const uid = await resolveUserId(req);
+  return watchlist.setGroup(s, parsed.data.group, uid);
 });
 
 app.delete<{ Params: { symbol: string } }>('/api/watchlist/:symbol', async (req, reply) => {
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;
-  return watchlist.remove(s);
+  const uid = await resolveUserId(req);
+  return watchlist.remove(s, uid);
 });
 
 // ---------- Alerts ----------
@@ -241,12 +342,13 @@ const newAlertSchema = z.discriminatedUnion('kind', [
 ]);
 
 app.get<{ Querystring: { symbol?: string } }>('/api/alerts', async (req, reply) => {
+  const uid = await resolveUserId(req);
   if (req.query.symbol) {
     const s = parseSymbol(req.query.symbol, reply);
     if (!s) return;
-    return alerts.list(s);
+    return alerts.list(uid, s);
   }
-  return alerts.list();
+  return alerts.list(uid);
 });
 
 app.post('/api/alerts', async (req, reply) => {
@@ -254,16 +356,19 @@ app.post('/api/alerts', async (req, reply) => {
   if (!parsed.success) return reply.code(400).send({ error: 'Invalid alert' });
   const symbol = normalizeSymbol(parsed.data.symbol);
   if (!isValidSymbol(symbol)) return reply.code(400).send({ error: 'Invalid symbol' });
-  return reply.code(201).send(await alerts.create({ ...parsed.data, symbol }));
+  const uid = await resolveUserId(req);
+  return reply.code(201).send(await alerts.create({ ...parsed.data, symbol }, uid));
 });
 
 app.delete<{ Params: { id: string } }>('/api/alerts/:id', async (req, reply) => {
-  const ok = await alerts.remove(req.params.id);
+  const uid = await resolveUserId(req);
+  const ok = await alerts.remove(req.params.id, uid);
   return ok ? { ok: true } : reply.code(404).send({ error: 'Alert not found' });
 });
 
 app.post<{ Params: { id: string } }>('/api/alerts/:id/seen', async (req) => {
-  await alerts.markSeen(req.params.id);
+  const uid = await resolveUserId(req);
+  await alerts.markSeen(req.params.id, uid);
   return { ok: true };
 });
 
@@ -278,7 +383,8 @@ const pushSubSchema = z.object({
 app.post('/api/push/subscribe', async (req, reply) => {
   const parsed = pushSubSchema.safeParse(req.body);
   if (!parsed.success) return reply.code(400).send({ error: 'Invalid subscription' });
-  await push.subscribe(parsed.data);
+  const uid = await resolveUserId(req);
+  await push.subscribe(parsed.data, uid);
   return { ok: true };
 });
 app.post('/api/push/unsubscribe', async (req, reply) => {
@@ -289,14 +395,19 @@ app.post('/api/push/unsubscribe', async (req, reply) => {
 });
 
 // ---------- WebSocket ----------
-app.get('/ws', { websocket: true }, (socket, req) => {
+app.get('/ws', { websocket: true }, async (socket, req) => {
   // Browsers always send Origin on WebSocket upgrades; reject other sites embedding our feed.
   const origin = req.headers.origin;
   if (origin && !allowedOrigins.includes(origin) && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
     socket.close(1008, 'Origin not allowed');
     return;
   }
-  hub.addClient(socket);
+  let wsUserId: string | undefined = undefined;
+  if (req.headers.cookie && process.env.AUTH_SECRET) {
+    const user = await getAuthUserFromCookie(req.headers.cookie, process.env.AUTH_SECRET);
+    if (user) wsUserId = user.id;
+  }
+  hub.addClient(socket, wsUserId);
 });
 
 // Graceful shutdown: free the port and close the upstream socket so `tsx watch` restarts don't collide.
@@ -332,7 +443,7 @@ app.log.info(`AI: ${ai.llm ? ai.llm.name : 'off (no ANTHROPIC_API_KEY or AI_BASE
  */
 async function prewarm() {
   const t0 = Date.now();
-  const symbols = (await watchlist.list()).map((w) => w.symbol);
+  const symbols = (await watchlist.list(defaultAdminId)).map((w) => w.symbol);
   const quoteProvider = providers.for('quote');
   const docsProvider = providers.for('transcripts');
   for (const s of symbols) {

@@ -11,15 +11,23 @@ datasource db {
 }
 
 model WatchlistItem {
-  symbol   String   @id
+  id       String   @id @default(cuid())
+  userId   String   @default("default-user")
+  symbol   String
   addedAt  DateTime @default(now())
   position Int      @default(0) // "My order" (drag to reorder)
   group    String? // optional group name, e.g. "Tech"
+
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
 }
 
 /// kind: price_above | price_below | near_level | breakout
 model Alert {
   id           String    @id @default(cuid())
+  userId       String    @default("default-user")
   symbol       String
   kind         String
   targetPrice  Float? // price alerts
@@ -36,6 +44,9 @@ model Alert {
   triggerPrice Float?
   seen         Boolean   @default(false) // user has been shown the trigger
 
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
   @@index([symbol, status])
 }
 
@@ -57,17 +68,34 @@ model Setting {
 /// Web Push subscriptions (installed app / browser) for alert notifications.
 model PushSubscription {
   endpoint  String   @id
+  userId    String?
   p256dh    String
   auth      String
   lang      String   @default("en")
   createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String             @id @default(cuid())
+  email             String             @unique
+  name              String?
+  passwordHash      String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  watchlist         WatchlistItem[]
+  alerts            Alert[]
+  pushSubscriptions PushSubscription[]
+}
+
+/// Rate limiting for invalid invite codes during sign-up (max 5 attempts in 5 hours).
+model InviteAttempt {
+  id        String   @id @default(cuid())
+  ip        String
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
@@ -169,6 +170,17 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* Link to sign up */}
+            <div className="mt-4 text-center text-xs sm:text-sm text-muted">
+              {t('auth.dontHaveAccount')}{' '}
+              <Link
+                href="/signup"
+                className="font-semibold text-accent hover:underline focus:outline-none"
+              >
+                {t('auth.signUp')}
+              </Link>
+            </div>
 
             {/* Default credentials hint */}
             <div className="mt-6 rounded-lg border border-accent/20 bg-accent/5 p-3 text-center text-xs text-muted">
