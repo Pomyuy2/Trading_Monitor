@@ -385,7 +385,7 @@
     "signUpTitle": "Create an Account",
     "signUpSubtitle": "Register with your email and invitation code to get started.",
     "email": "Email address",
-    "emailPlaceholder": "admin@trading.local",
+    "emailPlaceholder": "user@example.com",
     "password": "Password",
     "passwordPlaceholder": "Enter your password",
     "confirmPassword": "Confirm password",
@@ -406,8 +406,7 @@
     "errorPasswordMismatch": "Passwords do not match.",
     "errorPasswordTooShort": "Password must be at least 6 characters.",
     "dontHaveAccount": "Don't have an account?",
-    "alreadyHaveAccount": "Already have an account?",
-    "defaultCredentialsHint": "Default credentials: {email} / {password}"
+    "alreadyHaveAccount": "Already have an account?"
   },
   "connection": {
     "offline": "You are offline. Prices and news will update when the connection is back.",

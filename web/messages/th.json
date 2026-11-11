@@ -385,7 +385,7 @@
     "signUpTitle": "สร้างบัญชีผู้ใช้",
     "signUpSubtitle": "ลงทะเบียนด้วยอีเมลและรหัสคำเชิญเพื่อเริ่มต้นใช้งาน",
     "email": "ที่อยู่อีเมล",
-    "emailPlaceholder": "admin@trading.local",
+    "emailPlaceholder": "user@example.com",
     "password": "รหัสผ่าน",
     "passwordPlaceholder": "กรอกรหัสผ่านของคุณ",
     "confirmPassword": "ยืนยันรหัสผ่าน",
@@ -406,8 +406,7 @@
     "errorPasswordMismatch": "รหัสผ่านไม่ตรงกัน",
     "errorPasswordTooShort": "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร",
     "dontHaveAccount": "ยังไม่มีบัญชีใช่ไหม?",
-    "alreadyHaveAccount": "มีบัญชีอยู่แล้ว?",
-    "defaultCredentialsHint": "ข้อมูลเข้าสู่ระบบเริ่มต้น: {email} / {password}"
+    "alreadyHaveAccount": "มีบัญชีอยู่แล้ว?"
   },
   "connection": {
     "offline": "คุณออฟไลน์อยู่ ราคาและข่าวจะอัปเดตเมื่อกลับมาเชื่อมต่อ",

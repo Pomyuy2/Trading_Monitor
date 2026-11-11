@@ -22,40 +22,42 @@ export class UserService {
     env: { AUTH_USER_EMAIL?: string; AUTH_USER_PASSWORD?: string; AUTH_INVITE_CODE?: string } = process.env,
     private readonly log: { info(m: string): void; warn(m: string): void } = console,
   ) {
-    this.defaultEmail = (env.AUTH_USER_EMAIL?.trim() || 'admin@trading.local').toLowerCase();
-    this.defaultPass = env.AUTH_USER_PASSWORD || 'admin1234';
+    this.defaultEmail = env.AUTH_USER_EMAIL?.trim() ? env.AUTH_USER_EMAIL.trim().toLowerCase() : '';
+    this.defaultPass = env.AUTH_USER_PASSWORD || '';
     this.inviteCode = env.AUTH_INVITE_CODE?.trim() || DEFAULT_INVITE_CODE;
   }
 
   async init(): Promise<void> {
     try {
-      let admin = await this.db.user.findUnique({
-        where: { email: this.defaultEmail },
-      });
-
-      if (!admin) {
-        const hash = await bcrypt.hash(this.defaultPass, 10);
-        admin = await this.db.user.create({
-          data: {
-            email: this.defaultEmail,
-            name: 'Admin',
-            passwordHash: hash,
-          },
+      if (this.defaultEmail && this.defaultPass) {
+        let admin = await this.db.user.findUnique({
+          where: { email: this.defaultEmail },
         });
-        this.log.info(`Initialized default admin user: ${this.defaultEmail}`);
+
+        if (!admin) {
+          const hash = await bcrypt.hash(this.defaultPass, 10);
+          admin = await this.db.user.create({
+            data: {
+              email: this.defaultEmail,
+              name: this.defaultEmail.split('@')[0] || 'Admin',
+              passwordHash: hash,
+            },
+          });
+          this.log.info(`Initialized configured admin user: ${this.defaultEmail}`);
+        }
+
+        this.defaultUserId = admin.id;
+
+        // Assign any legacy/unassigned watchlist items or alerts to the admin user
+        await this.db.watchlistItem.updateMany({
+          where: { userId: 'default-user' },
+          data: { userId: admin.id },
+        });
+        await this.db.alert.updateMany({
+          where: { userId: 'default-user' },
+          data: { userId: admin.id },
+        });
       }
-
-      this.defaultUserId = admin.id;
-
-      // Assign any legacy/unassigned watchlist items or alerts to the admin user
-      await this.db.watchlistItem.updateMany({
-        where: { userId: 'default-user' },
-        data: { userId: admin.id },
-      });
-      await this.db.alert.updateMany({
-        where: { userId: 'default-user' },
-        data: { userId: admin.id },
-      });
     } catch (err) {
       this.log.warn(`User init check failed: ${(err as Error).message}`);
     }
@@ -65,12 +67,22 @@ export class UserService {
     if (this.defaultUserId && this.defaultUserId !== 'default-user') {
       return this.defaultUserId;
     }
-    const admin = await this.db.user.findUnique({
-      where: { email: this.defaultEmail },
+    if (this.defaultEmail) {
+      const admin = await this.db.user.findUnique({
+        where: { email: this.defaultEmail },
+      });
+      if (admin) {
+        this.defaultUserId = admin.id;
+        return admin.id;
+      }
+    }
+    const anyUser = await this.db.user.findFirst({
+      where: { id: { not: 'default-user' } },
+      orderBy: { createdAt: 'asc' },
     });
-    if (admin) {
-      this.defaultUserId = admin.id;
-      return admin.id;
+    if (anyUser) {
+      this.defaultUserId = anyUser.id;
+      return anyUser.id;
     }
     return 'default-user';
   }

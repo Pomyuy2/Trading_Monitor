@@ -47,11 +47,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Continue to env check fallback if Fastify is booting or unreachable
         }
 
-        // 2. Fallback to environment variables
-        const envEmail = (process.env.AUTH_USER_EMAIL?.trim() || 'admin@trading.local').toLowerCase();
-        const envPass = process.env.AUTH_USER_PASSWORD || 'admin1234';
+        // 2. Fallback to environment variables (only if explicitly configured)
+        const envEmail = process.env.AUTH_USER_EMAIL?.trim().toLowerCase();
+        const envPass = process.env.AUTH_USER_PASSWORD;
 
-        if (email === envEmail && password === envPass) {
+        if (envEmail && envPass && email === envEmail && password === envPass) {
           return {
             id: 'admin-env',
             email: envEmail,

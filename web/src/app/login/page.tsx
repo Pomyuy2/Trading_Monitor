@@ -172,7 +172,7 @@ export default function LoginPage() {
             </form>
 
             {/* Link to sign up */}
-            <div className="mt-4 text-center text-xs sm:text-sm text-muted">
+            <div className="mt-6 text-center text-xs sm:text-sm text-muted">
               {t('auth.dontHaveAccount')}{' '}
               <Link
                 href="/signup"
@@ -180,16 +180,6 @@ export default function LoginPage() {
               >
                 {t('auth.signUp')}
               </Link>
-            </div>
-
-            {/* Default credentials hint */}
-            <div className="mt-6 rounded-lg border border-accent/20 bg-accent/5 p-3 text-center text-xs text-muted">
-              <span className="font-medium text-accent">
-                {t('auth.defaultCredentialsHint', {
-                  email: 'admin@trading.local',
-                  password: 'admin1234',
-                })}
-              </span>
             </div>
           </div>
         </div>
