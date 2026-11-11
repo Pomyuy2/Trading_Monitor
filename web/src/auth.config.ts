@@ -30,24 +30,24 @@ export const authConfig = {
       return true;
     },
     redirect({ url, baseUrl }) {
-      // Always allow and return relative paths (e.g. "/" or "/stock/AAPL")
+      const canonicalBase = (process.env.AUTH_URL || 'https://trading.jarengjar.com').replace(/\/$/, '');
+      // If relative URL (e.g. "/" or "/stock/AAPL"), prepend canonicalBase so client new URL() parses safely
       if (url.startsWith('/')) {
-        return url;
+        return `${canonicalBase}${url}`;
       }
       try {
         const parsed = new URL(url);
-        // If redirect URL matches baseUrl or internal localhost/domain, normalize to relative path
-        if (
-          parsed.origin === baseUrl ||
-          parsed.hostname === 'localhost' ||
-          parsed.hostname === '127.0.0.1' ||
-          parsed.hostname === 'trading.jarengjar.com'
-        ) {
-          return parsed.pathname + parsed.search || '/';
+        // If redirect URL points to internal localhost/127.0.0.1, rewrite to canonicalBase
+        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+          return `${canonicalBase}${parsed.pathname}${parsed.search}`;
         }
-        return url;
+        // If redirect URL matches canonicalBase or baseUrl, allow it
+        if (parsed.origin === canonicalBase || parsed.origin === baseUrl) {
+          return url;
+        }
+        return canonicalBase;
       } catch {
-        return '/';
+        return canonicalBase;
       }
     },
     jwt({ token, user }) {

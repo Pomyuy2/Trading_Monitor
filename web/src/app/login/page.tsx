@@ -56,10 +56,11 @@ export default function LoginPage() {
         setError(t('auth.errorInvalid'));
         setLoading(false);
       } else {
-        router.push(callbackUrl);
-        router.refresh();
+        const destination = res?.url ? getSafeRedirectUrl(res.url) : callbackUrl;
+        window.location.href = destination;
       }
-    } catch {
+    } catch (err) {
+      console.error('Sign-in error:', err);
       setError(t('auth.errorGeneric'));
       setLoading(false);
     }
