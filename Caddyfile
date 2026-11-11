@@ -6,17 +6,28 @@
 
 	# Auth.js / NextAuth endpoints handled by Next.js
 	handle /api/auth/* {
-		reverse_proxy 127.0.0.1:3000
+		reverse_proxy 127.0.0.1:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	# Fastify REST API
 	handle /api/* {
-		reverse_proxy 127.0.0.1:4000
+		reverse_proxy 127.0.0.1:4000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+		}
 	}
 
 	# Next.js frontend web app
 	handle /* {
-		reverse_proxy 127.0.0.1:3000
+		reverse_proxy 127.0.0.1:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	log {

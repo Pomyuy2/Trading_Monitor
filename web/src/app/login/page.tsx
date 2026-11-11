@@ -8,12 +8,28 @@ import { EyeIcon, EyeOffIcon, LockIcon, LogoIcon, MoonIcon, SunIcon } from '@/co
 import { cx, useLang } from '@/components/ui';
 import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
 
+function getSafeRedirectUrl(target: string | null): string {
+  if (!target) return '/';
+  // Allow safe root-relative URLs like /stock/AAPL
+  if (target.startsWith('/') && !target.startsWith('//')) {
+    return target;
+  }
+  // If an absolute URL was passed (e.g. from an old callbackUrl param), sanitize to path + search
+  try {
+    const parsed = new URL(target, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return parsed.pathname + parsed.search || '/';
+  } catch {
+    return '/';
+  }
+}
+
 export default function LoginPage() {
   const t = useTranslations();
   const lang = useLang();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/';
+  const rawCallback = searchParams.get('callbackUrl');
+  const callbackUrl = getSafeRedirectUrl(rawCallback);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
