@@ -45,7 +45,7 @@ It runs on your own PC with free data plans, and works without any API keys in d
    cd Trading_Monitor
    pnpm install
    ```
-4. Copy `server/.env.example` to `server/.env` and add your API keys (see below). You can skip this
+4. Copy `.env.example` (or `server/.env.example`) to `server/.env` and add your API keys (see below). You can skip this
    step: without keys the app runs on demo data, clearly labelled "Mock".
 5. Run it:
    ```bash
@@ -73,6 +73,57 @@ pnpm app:autostart on     # start automatically when you sign in to Windows (off
   restarted automatically within seconds. With autostart on, prices and alerts run whenever you're signed in.
 - `pnpm app:start` refuses to start while `pnpm dev` is using ports 3000/4000 — use one or the other.
 - Autostart adds a small `Trading Monitor.vbs` to your Windows Startup folder (no admin rights needed).
+
+## Docker deployment (recommended for home server / hosting)
+
+Trading Monitor can be run as a containerized service with automatic restarts and persistent data storage.
+
+### 1. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and fill in your API keys (Finnhub, FMP, Twelve Data, and optional Anthropic or model router). Ensure `WEB_ORIGIN` includes your deployment domain (e.g., `https://trading.jarengjar.com`) so WebSockets and CORS are permitted.
+
+### 2. Build and start
+
+```bash
+docker compose up -d --build
+```
+
+The container (`trading-monitor-app`) will:
+- Run Prisma migrations and persist the SQLite database in the Docker volume `trading-monitor-data` (`/app/server/data/trading.db`).
+- Start the Fastify backend on port `4000`.
+- Start the Next.js frontend on port `3000`.
+- Start an internal Caddy reverse proxy on container port `80`, routing `/ws*` (WebSocket) and `/api/*` to Fastify and `/*` to Next.js.
+- Expose the unified service on host port **`3003`** (`http://127.0.0.1:3003`).
+
+### 3. Check status & logs
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+### 4. Reverse proxy setup (Caddy)
+
+To serve Trading Monitor securely over HTTPS (e.g. `https://trading.jarengjar.com`), configure your host's `/etc/caddy/Caddyfile`:
+
+```caddy
+trading.jarengjar.duckdns.org {
+	reverse_proxy 127.0.0.1:3003
+}
+
+http://trading.jarengjar.com {
+	reverse_proxy 127.0.0.1:3003
+}
+```
+
+Reload Caddy:
+```bash
+sudo systemctl reload caddy
+```
 
 ## API keys (all free plans)
 
@@ -186,4 +237,4 @@ Expected without an AI key. Add `ANTHROPIC_API_KEY` — or `AI_BASE_URL` + `AI_A
 
 **Can't install on a phone**
 Phones require HTTPS for installing and push. Use it as a website over Wi-Fi, or put it behind an
-HTTPS address (a tunnel or hosting service — not set up here).
+HTTPS address (such as `https://trading.jarengjar.com` via the Docker and Caddy setup).
