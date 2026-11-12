@@ -58,10 +58,42 @@ export function isIntradayRange(r: Range): boolean {
   return RESOLUTION_SECONDS[RANGE_RESOLUTION[r]] < 86400;
 }
 
+export interface PeriodFacts {
+  fiscalYear: number;
+  fiscalPeriod: 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'FY';
+  endDate: string;
+  startDate?: string;
+  form: string;
+  filed: string;
+  accn: string;
+  url: string;
+  revenue?: number;
+  netIncome?: number;
+  epsBasic?: number;
+  epsDiluted?: number;
+  assets?: number;
+  liabilities?: number;
+  equity?: number;
+  sharesOutstanding?: number;
+}
+
+export interface FinancialStatementFacts {
+  symbol: string;
+  cik: number;
+  entityName: string;
+  annual: PeriodFacts[];
+  quarterly: PeriodFacts[];
+  meta: SourceMeta;
+}
+
 /** Where a value came from and how fresh it is. Attached to every card / dataset. */
 export interface SourceMeta {
   source: string;
-  updatedAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp (when the server fetched or cached this)
+  marketTime?: string; // ISO timestamp (underlying trade execution or bar close)
+  feed?: 'consolidated' | 'iex' | 'delayed-15m' | 'eod' | 'sec';
+  adjusted?: 'split' | 'all' | 'raw';
+  latency?: 'realtime' | 'delayed' | 'eod';
   stale?: boolean; // served from cache after an upstream failure
   note?: string;
 }

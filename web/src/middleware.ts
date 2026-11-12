@@ -11,8 +11,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt
-     * - manifest.json, icons, img
+     * - manifest.webmanifest, manifest.json, icons, img
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|icons|img|robots.txt|sitemap.xml).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest\\.webmanifest|manifest\\.json|icons|img|robots\\.txt|sitemap\\.xml).*)',
   ],
 };

@@ -96,6 +96,21 @@ export class TwelveDataProvider extends BaseProvider {
       .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
       .sort((a, b) => a.time - b.time);
 
-    return { symbol, range, resolution: res, candles: plan.keep(bars), meta: { source: this.name, updatedAt: new Date().toISOString() } };
+    const kept = plan.keep(bars);
+    const lastBar = kept.length ? kept[kept.length - 1] : null;
+
+    return {
+      symbol,
+      range,
+      resolution: res,
+      candles: kept,
+      meta: {
+        source: this.name,
+        updatedAt: new Date().toISOString(),
+        feed: 'consolidated',
+        adjusted: 'split',
+        marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : undefined,
+      },
+    };
   }
 }

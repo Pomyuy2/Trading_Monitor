@@ -8,3 +8,7 @@ server/data
 *.db-journal
 .git
 .gitignore
+.env
+.env.*
+server/.env
+server/.env.*

@@ -13,6 +13,9 @@ export const envSchema = z.object({
   FINNHUB_API_KEY: opt(z.string().optional()),
   FMP_API_KEY: opt(z.string().optional()),
   TWELVEDATA_API_KEY: opt(z.string().optional()),
+  ALPACA_API_KEY_ID: opt(z.string().optional()),
+  ALPACA_API_SECRET_KEY: opt(z.string().optional()),
+  TIINGO_API_KEY: opt(z.string().optional()),
   ANTHROPIC_API_KEY: opt(z.string().optional()),
   // Alternative to Claude: any OpenAI-compatible chat endpoint (e.g. a model router). All three are needed.
   AI_BASE_URL: opt(z.string().url().optional()),

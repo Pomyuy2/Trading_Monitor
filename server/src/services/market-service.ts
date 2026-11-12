@@ -3,6 +3,7 @@ import {
   type AskAiResponse,
   type AskSource,
   type CandleSeries,
+  type FinancialStatementFacts,
   type Guidance,
   type GuidanceStatus,
   type InsightResponse,
@@ -20,7 +21,16 @@ import {
   type Sparkline,
   type SymbolMatch,
 } from '@tm/shared';
-import { ProviderAuthError, RateLimitError, type Capability, type KeyStats, type MarketDataProvider } from '../providers/types.js';
+import {
+  isFailoverEligible,
+  NotSupportedError,
+  ProviderAuthError,
+  RateLimitError,
+  type Capability,
+  type KeyStats,
+  type MarketDataProvider,
+} from '../providers/types.js';
+import { rateLimitState } from '../lib/http.js';
 import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
 import { nyDate } from '../lib/market-time.js';
 import { finalizeGuidance, guidanceTexts, withTexts } from '../ai/guidance.js';
@@ -36,7 +46,15 @@ const STALE_NOTE = 'Provider unavailable — showing last cached data';
 /** Mark data served from cache after an upstream failure. */
 function markStale<T extends { meta: SourceMeta }>(r: CachedResult<T>): T {
   if (!r.stale) return r.value;
-  return { ...r.value, meta: { ...r.value.meta, stale: true, note: STALE_NOTE, updatedAt: new Date(r.storedAt).toISOString() } };
+  return {
+    ...r.value,
+    meta: {
+      ...r.value.meta,
+      stale: true,
+      note: r.value.meta.note ?? STALE_NOTE,
+      updatedAt: new Date(r.storedAt).toISOString(),
+    },
+  };
 }
 
 async function settle<T>(p: Promise<T>): Promise<T | null> {
@@ -163,32 +181,150 @@ export class MarketService {
     }
   }
 
+  private getProviderChain(cap: Capability): MarketDataProvider[] {
+    if (typeof this.providers.chainFor === 'function') {
+      const chain = this.providers.chainFor(cap);
+      if (chain.length > 0) return chain;
+    }
+    const p = this.providers.for(cap);
+    const fb = this.providers.fallbackFor(cap);
+    const list = [p, fb].filter((x): x is MarketDataProvider => !!x && x !== this.providers.mock);
+    return list.length > 0 ? list : [this.providers.for(cap)];
+  }
+
+  private async withFallbackChain<T extends { meta: SourceMeta }>(
+    cap: Capability,
+    fn: (p: MarketDataProvider) => Promise<T>,
+    keyFor: (pName: string) => string,
+    ttl: number | ((v: T) => number),
+  ): Promise<T> {
+    const chain = this.getProviderChain(cap);
+    let lastErr: unknown = null;
+    let staleFallback: CachedResult<T> | null = null;
+
+    for (const p of chain) {
+      const blocked = rateLimitState(p.name);
+      const isBlocked = blocked && blocked.until > Date.now();
+      const key = keyFor(p.name);
+
+      if (isBlocked) {
+        const hit = await this.cache.get<T>(key);
+        if (hit && !staleFallback) {
+          staleFallback = { value: hit.value, stale: true, storedAt: hit.storedAt };
+        }
+        continue;
+      }
+
+      try {
+        const res = await cached(this.cache, key, ttl, () => withRateLimitRetry(() => fn(p)));
+        if (!res.stale) {
+          return res.value;
+        }
+        if (!staleFallback) {
+          staleFallback = res;
+        }
+      } catch (err) {
+        lastErr = err;
+        if (!isFailoverEligible(err)) {
+          throw err;
+        }
+        const hit = await this.cache.get<T>(key);
+        if (hit && !staleFallback) {
+          staleFallback = { value: hit.value, stale: true, storedAt: hit.storedAt };
+        }
+      }
+    }
+
+    if (staleFallback) {
+      return markStale(staleFallback);
+    }
+    if (lastErr) throw lastErr;
+    throw new Error(`All providers for ${cap} failed`);
+  }
+
+  private async withFallbackChainRaw<T>(
+    cap: Capability,
+    fn: (p: MarketDataProvider) => Promise<T>,
+    keyFor: (pName: string) => string,
+    ttl: number | ((v: T) => number),
+  ): Promise<T> {
+    const chain = this.getProviderChain(cap);
+    let lastErr: unknown = null;
+    let staleFallback: CachedResult<T> | null = null;
+
+    for (const p of chain) {
+      const blocked = rateLimitState(p.name);
+      const isBlocked = blocked && blocked.until > Date.now();
+      const key = keyFor(p.name);
+
+      if (isBlocked) {
+        const hit = await this.cache.get<T>(key);
+        if (hit && !staleFallback) {
+          staleFallback = { value: hit.value, stale: true, storedAt: hit.storedAt };
+        }
+        continue;
+      }
+
+      try {
+        const res = await cached(this.cache, key, ttl, () => withRateLimitRetry(() => fn(p)));
+        if (!res.stale) {
+          return res.value;
+        }
+        if (!staleFallback) {
+          staleFallback = res;
+        }
+      } catch (err) {
+        lastErr = err;
+        if (!isFailoverEligible(err)) {
+          throw err;
+        }
+        const hit = await this.cache.get<T>(key);
+        if (hit && !staleFallback) {
+          staleFallback = { value: hit.value, stale: true, storedAt: hit.storedAt };
+        }
+      }
+    }
+
+    if (staleFallback) {
+      return staleFallback.value;
+    }
+    if (lastErr) throw lastErr;
+    throw new Error(`All providers for ${cap} failed`);
+  }
+
   async search(q: string): Promise<SymbolMatch[]> {
-    const p = this.providers.for('search');
-    const key = `search:${p.name}:${q.toLowerCase()}`;
-    return (await cached(this.cache, key, TTL.search, () => this.withFallback('search', (x) => x.searchSymbols(q)))).value;
+    return this.withFallbackChainRaw(
+      'search',
+      (p) => p.searchSymbols(q),
+      (pName) => `search:${pName}:${q.toLowerCase()}`,
+      TTL.search,
+    );
   }
 
   /** `detail` also merges key stats (e.g. today's volume) from the keyStats provider. */
   async quote(symbol: string, detail = false): Promise<Quote> {
-    const p = this.providers.for('quote');
-    const quote = markStale(await cached(this.cache, `quote:${p.name}:${symbol}`, TTL.quote, () => this.withFallback('quote', (x) => x.getQuote(symbol))));
+    const quote = await this.withFallbackChain(
+      'quote',
+      (p) => p.getQuote(symbol),
+      (pName) => `quote:${symbol}:${pName}`,
+      TTL.quote,
+    );
     if (!detail) return quote;
     const sp = this.providers.for('keyStats');
-    if (sp === p) return quote;
+    if (sp.name === quote.meta.source) return quote;
     // A plan refusal is remembered (12 h) so we don't ask again on every refresh.
     const stats = await settle(
-      cached(
-        this.cache,
-        `keyStats:${sp.name}:${symbol}`,
+      this.withFallbackChain(
+        'keyStats',
+        (p) => orNotInPlan(p.name, () => p.getKeyStats(symbol), {} as Omit<KeyStats, 'meta'>),
+        (pName) => `keyStats:${symbol}:${pName}`,
         (v: KeyStats) => (v.meta.note === NOT_IN_PLAN ? TTL.notInPlan : TTL.keyStats),
-        () => orNotInPlan(sp.name, () => this.withFallback('keyStats', (x) => x.getKeyStats(symbol)), {} as Omit<KeyStats, 'meta'>),
       ),
     );
     if (!stats) return quote;
     const merged: Quote = { ...quote };
     let used = false;
-    for (const [k, v] of Object.entries(stats.value)) {
+    for (const [k, v] of Object.entries(stats)) {
       if (k === 'meta' || v == null) continue;
       const rec = merged as unknown as Record<string, unknown>;
       if (rec[k] == null) {
@@ -196,47 +332,50 @@ export class MarketService {
         used = true;
       }
     }
-    if (used) merged.meta = { ...quote.meta, source: `${quote.meta.source}, ${sp.name}` };
+    if (used) merged.meta = { ...quote.meta, source: `${quote.meta.source}, ${stats.meta.source}` };
     return merged;
   }
 
   async candles(symbol: string, range: Range): Promise<CandleSeries> {
-    const p = this.providers.for(isIntradayRange(range) ? 'intradayCandles' : 'dailyCandles');
-    // Intraday: 1 min while bars are still arriving; 30 min once the newest bar is old (market not trading),
-    // which keeps us well inside Twelve Data's free 800 requests/day.
+    const cap = isIntradayRange(range) ? 'intradayCandles' : 'dailyCandles';
     const ttl = isIntradayRange(range)
       ? (s: CandleSeries) => {
           const last = s.candles[s.candles.length - 1]?.time ?? 0;
           return Date.now() / 1000 - last > 15 * 60 ? TTL.intradayIdle : TTL.intradayCandles;
         }
       : TTL.dailyCandles;
-    const cap = isIntradayRange(range) ? 'intradayCandles' : 'dailyCandles';
-    return markStale(
-      await cached(this.cache, `candles:${p.name}:${symbol}:${range}`, ttl, () => this.withFallback(cap, (x) => x.getCandles(symbol, range))),
+
+    return this.withFallbackChain(
+      cap,
+      (p) => p.getCandles(symbol, range),
+      (pName) => `candles:${symbol}:${range}:${pName}:split`,
+      ttl,
     );
   }
 
   /**
-   * Call the capability's provider; if it refuses this symbol on the free plan (401/402/403) or its
-   * call allowance is used up (429), try the configured fallback provider (e.g. FMP → Twelve Data
-   * for daily candles).
+   * Call the capability's providers in fallback chain order.
+   * Preserved for backward compatibility.
    */
   private async withFallback<T>(cap: Capability, fn: (p: MarketDataProvider) => Promise<T>): Promise<T> {
-    const p = this.providers.for(cap);
-    try {
-      return await withRateLimitRetry(() => fn(p));
-    } catch (err) {
-      const fb = this.providers.fallbackFor(cap);
-      if (!(err instanceof ProviderAuthError || err instanceof RateLimitError) || !fb) throw err;
-      return withRateLimitRetry(() => fn(fb));
+    const chain = this.getProviderChain(cap);
+    let lastErr: unknown = null;
+    for (const p of chain) {
+      const blocked = rateLimitState(p.name);
+      if (blocked && blocked.until > Date.now()) {
+        continue;
+      }
+      try {
+        return await withRateLimitRetry(() => fn(p));
+      } catch (err) {
+        lastErr = err;
+        if (!isFailoverEligible(err)) throw err;
+      }
     }
+    if (lastErr) throw lastErr;
+    throw new Error(`All providers for ${cap} failed`);
   }
 
-  /**
-   * Support / resistance for the selected range. The (price-independent) level list is cached per
-   * symbol + range + latest candle, so it's recomputed only when new candles arrive; the split into
-   * supports / resistances uses the current price on every request.
-   */
   /** Quotes for several symbols at once (watchlist); unknown symbols are skipped. */
   async quotes(symbols: string[]): Promise<Quote[]> {
     const out = await Promise.all(symbols.map((s) => settle(this.quote(s))));
@@ -248,16 +387,19 @@ export class MarketService {
    * watchlist costs only a couple of daily-candle calls per stock per day.
    */
   async sparkline(symbol: string): Promise<Sparkline> {
-    const p = this.providers.for('dailyCandles');
-    const res = await cached(this.cache, `sparkline:${p.name}:${symbol}`, TTL.sparkline, async () => {
-      const s = await this.withFallback('dailyCandles', (x) => x.getCandles(symbol, '6M'));
-      return {
-        symbol,
-        points: s.candles.slice(-SPARKLINE_DAYS).map((c) => ({ time: c.time, close: c.close })),
-        meta: { ...s.meta },
-      } satisfies Sparkline;
-    });
-    return markStale(res);
+    return this.withFallbackChain(
+      'dailyCandles',
+      async (p) => {
+        const s = await p.getCandles(symbol, '6M');
+        return {
+          symbol,
+          points: s.candles.slice(-SPARKLINE_DAYS).map((c) => ({ time: c.time, close: c.close })),
+          meta: { ...s.meta },
+        } satisfies Sparkline;
+      },
+      (pName) => `sparkline:${symbol}:${pName}`,
+      TTL.sparkline,
+    );
   }
 
   async sparklines(symbols: string[]): Promise<Sparkline[]> {
@@ -371,23 +513,42 @@ export class MarketService {
    * - only new headlines wait for AI tags; already-tagged ones keep theirs.
    */
   async news(symbol: string, lang: Lang): Promise<NewsResponse> {
-    const p = this.providers.for('news');
-    const ai = this.aiFor(p);
     const now = Date.now();
-    // Headline list: the last 3 days (weekends are quiet). The AI summary uses only the last 24 h.
     const quote = await settle(this.quote(symbol));
-    const res = await cached(this.cache, `news:${p.name}:${symbol}`, TTL.news, async () => {
-      const raw = await withRateLimitRetry(() => p.getNews(symbol, now - 3 * 86400_000, now));
-      const sorted = raw.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-      // Providers tag many market-wide stories to big tickers; prefer ones that mention the company.
-      const relevant = sorted.filter((n) => mentions(n, symbol, quote?.name ?? null));
-      return (relevant.length >= MIN_RELEVANT ? relevant : sorted).slice(0, MAX_HEADLINES);
-    });
-    const headlines = res.value;
+
+    interface NewsResult {
+      headlines: NewsItem[];
+      source: string;
+      storedAt: number;
+      stale: boolean;
+    }
+
+    const fetched = await this.withFallbackChainRaw<NewsResult>(
+      'news',
+      async (p) => {
+        const raw = await withRateLimitRetry(() => p.getNews(symbol, now - 3 * 86400_000, now));
+        const sorted = raw.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+        const relevant = sorted.filter((n) => mentions(n, symbol, quote?.name ?? null));
+        return {
+          headlines: (relevant.length >= MIN_RELEVANT ? relevant : sorted).slice(0, MAX_HEADLINES),
+          source: p.name,
+          storedAt: Date.now(),
+          stale: false,
+        };
+      },
+      (pName) => `news:${pName}:${symbol}`,
+      TTL.news,
+    );
+
+    const headlines = fetched.headlines;
+    const providerName = fetched.source;
+    const activeProvider = (this.providers as { providerNamed?: (n: string) => MarketDataProvider | undefined }).providerNamed?.(providerName) ?? this.providers.for('news');
+    const ai = this.aiFor(activeProvider);
+
     const meta: SourceMeta = {
-      source: p.name,
-      updatedAt: new Date(res.storedAt).toISOString(),
-      ...(res.stale ? { stale: true, note: STALE_NOTE } : {}),
+      source: providerName,
+      updatedAt: new Date(fetched.storedAt).toISOString(),
+      ...(fetched.stale ? { stale: true, note: STALE_NOTE } : {}),
     };
     const recent = headlines.filter((n) => Date.parse(n.publishedAt) >= Date.now() - 24 * 3600_000).slice(0, MAX_SUMMARY_ARTICLES);
     const wantSummary = ai.canSummarize && recent.length > 0;
@@ -457,20 +618,19 @@ export class MarketService {
 
   async insight(symbol: string, lang: Lang): Promise<InsightResponse> {
     const r = this.providers;
-    const c = <T extends { meta: SourceMeta }>(cap: Parameters<ProviderRegistry['for']>[0], ttl: number, fn: (p: ReturnType<ProviderRegistry['for']>) => Promise<T>) => {
-      const p = r.for(cap);
+    const c = <T extends { meta: SourceMeta }>(
+      cap: Capability,
+      ttl: number,
+      fn: (p: MarketDataProvider) => Promise<T>,
+    ) => {
       return settle(
-        cached(this.cache, `${cap}:${p.name}:${symbol}`, ttl, async () => {
-          try {
-            return await this.withFallback(cap, fn);
-          } catch (err) {
-            const empty = EMPTY_INSIGHT[cap as keyof typeof EMPTY_INSIGHT];
-            if (err instanceof ProviderAuthError && empty) {
-              return { ...empty, meta: { source: p.name, updatedAt: new Date().toISOString(), note: NOT_IN_PLAN } } as unknown as T;
-            }
-            throw err;
+        this.withFallbackChain(cap, fn, (pName) => `${cap}:${symbol}:${pName}`, ttl).catch((err) => {
+          const empty = EMPTY_INSIGHT[cap as keyof typeof EMPTY_INSIGHT];
+          if (err instanceof ProviderAuthError && empty) {
+            return { ...empty, meta: { source: 'None', updatedAt: new Date().toISOString(), note: NOT_IN_PLAN } } as unknown as T;
           }
-        }).then(markStale),
+          throw err;
+        }),
       );
     };
     const [profile, estimates, priceTargets, ratings, earnings] = await Promise.all([
@@ -693,5 +853,17 @@ ${facts.join('\n\n')}`;
       sources,
       model: modelName,
     };
+  }
+
+  /**
+   * Official SEC EDGAR XBRL Company Facts (10-K/10-Q financial statements).
+   */
+  async companyFacts(symbol: string): Promise<FinancialStatementFacts> {
+    return this.withFallbackChain(
+      'companyFacts',
+      (p) => p.getCompanyFacts(symbol),
+      (pName) => `companyFacts:${pName}:${symbol}`,
+      24 * 3600_000,
+    );
   }
 }

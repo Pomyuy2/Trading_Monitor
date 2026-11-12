@@ -19,7 +19,8 @@
       "earningsCalendar": "analyst data",
       "transcripts": "guidance",
       "earningsHistory": "chart markers (earnings)",
-      "dividends": "chart markers (dividends)"
+      "dividends": "chart markers (dividends)",
+      "companyFacts": "financial facts"
     }
   },
   "header": {

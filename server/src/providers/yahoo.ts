@@ -13,6 +13,7 @@ import {
   type SymbolMatch,
 } from '@tm/shared';
 import { getJson } from '../lib/http.js';
+import { dateToUtcSec, nyDate } from '../lib/market-time.js';
 import {
   BaseProvider,
   NotFoundError,
@@ -253,11 +254,14 @@ export class YahooProvider extends BaseProvider {
     const closes = quote.close ?? [];
     const volumes = quote.volume ?? [];
 
+    const isDailyOrWeekly = range === '6M' || range === '1Y' || range === '5Y';
     const candles: Candle[] = [];
     for (let i = 0; i < timestamps.length; i++) {
-      const time = timestamps[i];
+      const rawTime = timestamps[i];
       const close = closes[i];
-      if (time == null || close == null || !Number.isFinite(close)) continue;
+      if (rawTime == null || close == null || !Number.isFinite(close)) continue;
+      // Canonicalize daily / weekly bars to UTC midnight (00:00:00 UTC) matching Twelve Data and FMP
+      const time = isDailyOrWeekly ? dateToUtcSec(nyDate(rawTime)) : rawTime;
       const open = opens[i];
       const high = highs[i];
       const low = lows[i];
@@ -275,12 +279,20 @@ export class YahooProvider extends BaseProvider {
 
     candles.sort((a, b) => a.time - b.time);
 
+    const lastBar = candles.length ? candles[candles.length - 1] : null;
+
     return {
       symbol,
       range,
       resolution: RANGE_RESOLUTION[range],
       candles,
-      meta: this.meta(),
+      meta: {
+        ...this.meta(),
+        feed: isDailyOrWeekly ? 'consolidated' : 'delayed-15m',
+        adjusted: 'split',
+        latency: isDailyOrWeekly ? 'eod' : 'delayed',
+        marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : undefined,
+      },
     };
   }
 
@@ -342,8 +354,13 @@ export class YahooProvider extends BaseProvider {
       dividendYield: null,
       ts: meta.regularMarketTime ? meta.regularMarketTime * 1000 : Date.now(),
       marketState: getMarketState(meta.currentTradingPeriod),
-      delayed: false,
-      meta: this.meta(),
+      delayed: true,
+      meta: {
+        ...this.meta(),
+        feed: 'delayed-15m',
+        latency: 'delayed',
+        marketTime: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : undefined,
+      },
     };
   }
 
@@ -370,7 +387,11 @@ export class YahooProvider extends BaseProvider {
       prevClose: meta.chartPreviousClose ?? meta.previousClose ?? null,
       week52High: meta.fiftyTwoWeekHigh ?? null,
       week52Low: meta.fiftyTwoWeekLow ?? null,
-      meta: this.meta(),
+      meta: {
+        ...this.meta(),
+        feed: 'consolidated',
+        marketTime: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : undefined,
+      },
     };
   }
 

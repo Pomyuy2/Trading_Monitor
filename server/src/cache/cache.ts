@@ -54,9 +54,27 @@ export interface CachedResult<T> {
   storedAt: number;
 }
 
+/** In-flight request deduplication (Singleflight) scoped per Cache instance. */
+const inFlightPerCache = new WeakMap<Cache, Map<string, Promise<CachedResult<any>>>>();
+
+function getInFlightMap(cache: Cache): Map<string, Promise<CachedResult<any>>> {
+  let map = inFlightPerCache.get(cache);
+  if (!map) {
+    map = new Map();
+    inFlightPerCache.set(cache, map);
+  }
+  return map;
+}
+
+/** For tests: inspect active in-flight promises. */
+export function inFlightCount(cache: Cache): number {
+  return inFlightPerCache.get(cache)?.size ?? 0;
+}
+
 /**
- * Read-through cache with stale fallback.
- * - Fresh hit → return it.
+ * Read-through cache with singleflight deduplication and stale fallback.
+ * - Fresh hit → return it immediately.
+ * - In-flight hit → reuse active promise (deduplicates concurrent misses).
  * - Miss / expired → call `fetcher`. On success cache and return.
  * - Fetcher throws and we have an old entry → return it flagged stale.
  * - Otherwise rethrow.
@@ -67,18 +85,37 @@ export async function cached<T>(
   ttlMs: number | ((value: T) => number),
   fetcher: () => Promise<T>,
 ): Promise<CachedResult<T>> {
+  const inFlight = getInFlightMap(cache);
+  const existing = inFlight.get(key);
+  if (existing) {
+    return existing as Promise<CachedResult<T>>;
+  }
+
   const hit = await cache.get<T>(key);
   const now = Date.now();
   if (hit && hit.expiresAt > now) {
     return { value: hit.value, stale: false, storedAt: hit.storedAt };
   }
-  try {
-    const value = await fetcher();
-    const ttl = typeof ttlMs === 'function' ? ttlMs(value) : ttlMs;
-    await cache.set(key, value, ttl);
-    return { value, stale: false, storedAt: now };
-  } catch (err) {
-    if (hit) return { value: hit.value, stale: true, storedAt: hit.storedAt };
-    throw err;
+
+  const active = inFlight.get(key);
+  if (active) {
+    return active as Promise<CachedResult<T>>;
   }
+
+  const promise = (async () => {
+    try {
+      const value = await fetcher();
+      const ttl = typeof ttlMs === 'function' ? ttlMs(value) : ttlMs;
+      await cache.set(key, value, ttl);
+      return { value, stale: false, storedAt: Date.now() };
+    } catch (err) {
+      if (hit) return { value: hit.value, stale: true, storedAt: hit.storedAt };
+      throw err;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+
+  inFlight.set(key, promise);
+  return promise;
 }

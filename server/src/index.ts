@@ -55,6 +55,8 @@ const watchlist = new PrismaWatchlistStore(db, ['AAPL', 'MSFT', 'NVDA', 'TSLA', 
 const log = { info: (m: string) => app.log.info(m), warn: (m: string) => app.log.warn(m) };
 const alerts = new AlertService(db, market, hub, log);
 providers.for('realtime').onTick((t) => alerts.handleTick(t));
+import { quotaLedger } from './quota/ledger.js';
+await quotaLedger.init();
 const push = new PushService(db, env.VAPID_SUBJECT, log);
 await push.init();
 const users = new UserService(db, process.env, log);
@@ -263,6 +265,19 @@ app.get<{ Params: { symbol: string }; Querystring: { lang?: string } }>('/api/in
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;
   return market.insight(s, parseLang(req.query.lang));
+});
+
+app.get<{ Params: { symbol: string } }>('/api/market/facts/:symbol', async (req, reply) => {
+  const s = parseSymbol(req.params.symbol, reply);
+  if (!s) return;
+  return market.companyFacts(s);
+});
+
+app.get('/api/diagnostics/providers', async () => {
+  return {
+    routing: providers.routing(),
+    health: quotaLedger.getDiagnostics(),
+  };
 });
 
 const askBodySchema = z.object({

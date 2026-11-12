@@ -81,12 +81,19 @@ export class FmpProvider extends BaseProvider {
     const cutoff = Date.now() / 1000 - RANGE_SECONDS[range];
     const inRange = daily.filter((c) => c.time >= cutoff);
     const candles = range === '5Y' ? toWeekly(inRange) : inRange;
+    const lastBar = candles.length ? candles[candles.length - 1] : null;
     return {
       symbol,
       range,
       resolution: range === '5Y' ? '1week' : '1day',
       candles,
-      meta: { source: this.name, updatedAt: new Date().toISOString() },
+      meta: {
+        source: this.name,
+        updatedAt: new Date().toISOString(),
+        feed: 'eod',
+        adjusted: 'split',
+        marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : undefined,
+      },
     };
   }
 

@@ -13,12 +13,13 @@ const dbFile = join(root, 'data', 'e2e.db');
 
 // Blank keys BEFORE the app loads .env (dotenv never overrides variables that already exist).
 Object.assign(process.env, {
+  DEMO_MODE: 'true',
   FINNHUB_API_KEY: '',
   FMP_API_KEY: '',
   TWELVEDATA_API_KEY: '',
   ANTHROPIC_API_KEY: '',
-  PORT: process.env.E2E_SERVER_PORT ?? '4100',
-  WEB_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://localhost:3100',
+  PORT: process.env.E2E_SERVER_PORT ?? '4900',
+  WEB_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://localhost:3900',
   RATE_LIMIT_PER_MIN: '5000',
   MOCK_MARKET_STATE: 'open',
   TM_DATABASE_URL: `file:${dbFile.replace(/\\/g, '/')}`,

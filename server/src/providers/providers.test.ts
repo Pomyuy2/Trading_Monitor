@@ -106,6 +106,7 @@ describe('FinnhubProvider (recorded)', () => {
     serveBody(/profile2|metric|market-status/, '{}', 200, 'application/json');
     await expect(fh().getQuote('AAPL')).rejects.toBeInstanceOf(RateLimitError);
     routes = [];
+    resetRateLimits();
     serveBody(/quote\?symbol=AAPL/, '{"error":"You don\'t have access to this resource."}', 403, 'application/json');
     serveBody(/profile2|metric|market-status/, '{}', 200, 'application/json');
     await expect(fh().getQuote('AAPL')).rejects.toBeInstanceOf(ProviderAuthError);

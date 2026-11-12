@@ -4,6 +4,7 @@ import type {
   EarningsReport,
   EarningsEvent,
   Estimates,
+  FinancialStatementFacts,
   NewsItem,
   PriceTargets,
   Profile,
@@ -68,6 +69,8 @@ export interface MarketDataProvider {
   getEarningsHistory(symbol: string, fromMs: number, toMs: number): Promise<EarningsReport[]>;
   /** Dividend history (ex-dates). */
   getDividends(symbol: string): Promise<DividendEvent[]>;
+  /** Official SEC EDGAR XBRL Company Facts. */
+  getCompanyFacts(symbol: string): Promise<FinancialStatementFacts>;
 }
 
 export type Capability =
@@ -85,7 +88,8 @@ export type Capability =
   | 'earningsCalendar'
   | 'transcripts'
   | 'earningsHistory'
-  | 'dividends';
+  | 'dividends'
+  | 'companyFacts';
 
 export class NotSupportedError extends Error {
   constructor(provider: string, method: string) {
@@ -115,6 +119,51 @@ export class RateLimitError extends Error {
     super(`${provider} rate limit hit`);
     this.name = 'RateLimitError';
   }
+}
+
+/** Upstream 5xx error (e.g. 500, 502, 503, 504). */
+export class ProviderServerError extends Error {
+  constructor(provider: string, public readonly status: number, detail?: string) {
+    super(`${provider} server error (HTTP ${status})${detail ? ': ' + detail : ''}`);
+    this.name = 'ProviderServerError';
+  }
+}
+
+/** Upstream request timed out (AbortSignal.timeout). */
+export class ProviderTimeoutError extends Error {
+  constructor(provider: string, public readonly timeoutMs: number) {
+    super(`${provider} request timed out after ${timeoutMs}ms`);
+    this.name = 'ProviderTimeoutError';
+  }
+}
+
+/** Network connection refused, DNS failure, or socket reset. */
+export class ProviderNetworkError extends Error {
+  constructor(provider: string, detail?: string) {
+    super(`${provider} network error${detail ? ': ' + detail : ''}`);
+    this.name = 'ProviderNetworkError';
+  }
+}
+
+/** Upstream response was malformed (e.g. invalid JSON or HTML error page). */
+export class ProviderResponseError extends Error {
+  constructor(provider: string, detail?: string) {
+    super(`${provider} malformed response${detail ? ': ' + detail : ''}`);
+    this.name = 'ProviderResponseError';
+  }
+}
+
+/** Errors eligible to trigger failover to the next provider in an ordered chain. */
+export function isFailoverEligible(err: unknown): boolean {
+  return (
+    err instanceof ProviderAuthError ||
+    err instanceof RateLimitError ||
+    err instanceof ProviderServerError ||
+    err instanceof ProviderTimeoutError ||
+    err instanceof ProviderNetworkError ||
+    err instanceof ProviderResponseError ||
+    err instanceof NotFoundError
+  );
 }
 
 /** Base class: every method unsupported by default. */
@@ -189,5 +238,8 @@ export abstract class BaseProvider implements MarketDataProvider {
   async getGuidanceDocuments(symbol: string): Promise<SourceDocument[]> {
     const t = await this.getLatestTranscript(symbol);
     return t ? [{ title: t.title, date: t.date, url: '', text: t.text }] : [];
+  }
+  async getCompanyFacts(_symbol: string): Promise<FinancialStatementFacts> {
+    return this.unsupported('getCompanyFacts');
   }
 }

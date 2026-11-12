@@ -6,6 +6,9 @@ export const authConfig = {
   },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
+      if (process.env.DEMO_MODE === 'true') {
+        return true;
+      }
       const isLoggedIn = !!auth?.user;
       const isAuthPage = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup');
 

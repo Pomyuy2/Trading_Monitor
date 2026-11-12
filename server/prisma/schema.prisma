@@ -100,3 +100,24 @@ model InviteAttempt {
 
   @@index([ip, createdAt])
 }
+
+/// Persistent quota tracking and circuit-breaker ledger for market data providers.
+model QuotaLedger {
+  id                  String    @id @default(cuid())
+  provider            String
+  endpoint            String    @default("default")
+  usedRequests        Int       @default(0)
+  usedCredits         Int       @default(0)
+  windowType          String    @default("rolling") // rolling | fixed
+  windowStart         DateTime
+  windowEnd           DateTime
+  lastRateLimitAt     DateTime?
+  lastSuccessAt       DateTime?
+  circuitBreakerState String    @default("closed") // closed | open
+  circuitBreakerUntil DateTime?
+  strikes             Int       @default(0)
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([provider, endpoint])
+  @@index([provider])
+}
