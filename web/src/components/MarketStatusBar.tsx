@@ -31,7 +31,7 @@ export function MarketStatusBar() {
   const dot = s.phase === 'open' ? 'bg-up live-dot' : s.phase === 'closed' ? 'bg-muted' : 'bg-warn';
   return (
     <div className="border-b border-border bg-panel">
-      <p role="status" className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-2 gap-y-0.5 px-4 py-2 text-xs">
+      <p role="status" className="page-width flex flex-wrap items-center gap-x-2 gap-y-0.5 px-4 py-2 text-xs">
         <span aria-hidden className={cx('size-2 shrink-0 rounded-full', dot)} />
         <span className="font-medium text-text">{t('label')}:</span>
         <span className="text-text">{text}</span>

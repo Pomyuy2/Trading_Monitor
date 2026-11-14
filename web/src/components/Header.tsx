@@ -14,7 +14,7 @@ export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
   const t = useTranslations();
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-4 sm:gap-4">
+      <div className="page-width flex h-16 items-center gap-2 px-4 sm:gap-4">
         <button type="button" className={cx(btn.icon, 'lg:hidden')} onClick={onOpenWatchlist} aria-label={t('header.openWatchlist')}>
           <ListIcon />
         </button>

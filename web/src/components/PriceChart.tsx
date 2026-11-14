@@ -362,7 +362,7 @@ export function PriceChart({
 
   return (
     <div ref={wrap} className="relative">
-      <div ref={el} role="img" aria-label={ariaLabel} className="h-[320px] w-full sm:h-[380px] xl:h-[420px]" />
+      <div ref={el} role="img" aria-label={ariaLabel} className="chart-h w-full" />
       {hover && <Tooltip hover={hover} resolution={resolution} currency={currency} width={wrap.current?.clientWidth ?? 0} />}
     </div>
   );

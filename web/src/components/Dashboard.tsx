@@ -126,7 +126,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       <Header onOpenWatchlist={() => setDialog('watchlist')} />
       <MarketStatusBar />
 
-      <div className="mx-auto w-full max-w-[1600px] flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="page-width flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[16.25rem_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <div className="sticky top-20 space-y-4">
             <Watchlist current={symbol} />
