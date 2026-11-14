@@ -2,7 +2,9 @@
 
 import type {
   Alert,
+  AskAiRequest,
   AskAiResponse,
+  AskResolveResponse,
   CandleSeries,
   EventsResponse,
   NewAlert,
@@ -202,15 +204,17 @@ export async function setWatchlistGroup(symbol: string, group: string | null) {
   );
 }
 
-/** Ask AI question about a symbol. */
-export async function askAi(
-  symbol: string,
-  question: string,
-  lang: Lang,
-  history?: { role: 'user' | 'assistant'; content: string }[],
-): Promise<AskAiResponse> {
-  return fetchJson<AskAiResponse>('/api/ai/ask', {
-    method: 'POST',
-    body: JSON.stringify({ symbol, question, lang, history }),
-  });
+/** Ask AI a question about any stocks (named in the question, else the chat's stocks, else the page's stock). */
+export async function askAi(req: AskAiRequest): Promise<AskAiResponse> {
+  return fetchJson<AskAiResponse>('/api/ai/ask', { method: 'POST', body: JSON.stringify(req) });
+}
+
+/** Which stocks a question would look up (shown under the input while typing; no AI call). */
+export function useAskResolve(question: string, context: string[], pageSymbol: string) {
+  const q = question.trim();
+  return useSWR<AskResolveResponse>(
+    q ? ['/api/ai/resolve', q, context.join(','), pageSymbol] : null,
+    ([url]: [string]) => fetchJson<AskResolveResponse>(url, { method: 'POST', body: JSON.stringify({ question: q, context, pageSymbol }) }),
+    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
 }

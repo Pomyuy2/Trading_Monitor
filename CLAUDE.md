@@ -35,7 +35,9 @@ phases or features. This file records what has been built, the decisions behind 
 | 7 Fast, always-ready app | done: `scripts/run.mjs` (`pnpm app:*`) — production build in `web/.next-prod`, background supervisor with crash restart + logs in `logs/`, startup pre-warm of watchlist caches, optional Windows autostart (Startup-folder .vbs) |
 | 8 Watchlist upgrades | done: 1-month sparklines (`/api/sparklines`, batch `/api/quotes`), up/down summary, sort (saved pref `tm_wlsort`), edit-order mode with pointer drag + arrow keys (`PUT /api/watchlist/order`), groups via the row ⋯ menu (`PATCH /api/watchlist/:s`, collapse state in localStorage). Also: Twelve Data fallback for daily candles, `notInPlan` caching, per-provider 429 back-off |
 | 8.5 AI via router + summary panel | done (2026-11-11): `RouterAi`, AI work in the background (`aiJob`), `AiSummaryPanel` under the price header (grid area `summary`), summary keyed by the set of last-24 h article ids (new article → new summary; unchanged → none; hourly refresh for the price-move wording), previous summary shown with `summaryUpdating`, news list re-checked every 2 min |
-| **Next** | "Ask about this stock" chatbot (offered, user wanted the summary fixes first); other ideas: ask the user (ideas in the prompt's "Later ideas": phone alerts via LINE/email/ntfy, portfolio, AI key, HTTPS, SET) |
+| 8.6 Auth, sign-up, Docker, Yahoo | done on the other PC (see git log): Auth.js login + invite-code sign-up, per-user data, encrypted emails, Docker Compose, Yahoo Finance for candles |
+| 9 Ask AI about any stock + layout | done (2026-11-14): `ai/ask-resolver.ts` finds tickers / company names / "watchlist" in the question (all-caps words checked with the quote provider, "not found" remembered 6 h); `MarketService.ask` looks up ≤3 stocks; `POST /api/ai/resolve` feeds the preview line; chat kept in `lib/ask-ai-store.ts` across stock pages. News card full width in two columns + "Show more"; Key stats full-width row |
+| **Next** | ask the user (ideas in the prompt's "Later ideas": phone alerts via LINE/email/ntfy, portfolio, HTTPS, SET). The Playwright suite predates the login wall and fails at sign-in — needs a test account step |
 
 Phone alerts: the user does **not** use Telegram; candidates are LINE Official Account, email or the ntfy app (deferred).
 
@@ -90,7 +92,8 @@ pnpm monorepo:
   `ws://<host>:4000/ws` (origin-checked). Fastify `trustProxy: 'loopback'` so per-IP rate limits work.
 
 API: `/api/search`, `quote/:s` (`?detail=1` adds volume), `candles/:s?range=`, `levels/:s?range=`,
-`events/:s`, `news/:s?lang=`, `insight/:s?lang=`, `watchlist` (GET/POST/DELETE `/:s`), `alerts`
+`events/:s`, `news/:s?lang=`, `insight/:s?lang=`, `ai/ask` (POST: question, context chips, pageSymbol, history),
+`ai/resolve` (POST: which stocks a question would look up), `watchlist` (GET/POST/DELETE `/:s`), `alerts`
 (GET/POST, DELETE `/:id`, POST `/:id/seen`), `push/key|subscribe|unsubscribe`, `meta`, `health`, `WS /ws`.
 
 ## Data providers (all free plans) — routing in `server/src/config/providers.ts`

@@ -1,6 +1,8 @@
 import {
   isIntradayRange,
+  isValidSymbol,
   type AskAiResponse,
+  type AskResolveResponse,
   type AskSource,
   type CandleSeries,
   type Guidance,
@@ -20,10 +22,11 @@ import {
   type Sparkline,
   type SymbolMatch,
 } from '@tm/shared';
-import { ProviderAuthError, RateLimitError, type Capability, type KeyStats, type MarketDataProvider } from '../providers/types.js';
+import { NotFoundError, ProviderAuthError, RateLimitError, type Capability, type KeyStats, type MarketDataProvider } from '../providers/types.js';
 import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
 import { nyDate } from '../lib/market-time.js';
 import { finalizeGuidance, guidanceTexts, withTexts } from '../ai/guidance.js';
+import { findMentions, MAX_ASK_STOCKS, mentionsWatchlist, type KnownStock } from '../ai/ask-resolver.js';
 import type { AiService } from '../ai/ai-service.js';
 import { cached, type Cache, type CachedResult } from '../cache/cache.js';
 import { TTL } from '../config/cache-ttl.js';
@@ -104,6 +107,9 @@ const AI_RETRY_AFTER_MS = 5 * 60_000;
 /** Guidance reads long filings; the insight request waits a bit longer before saying "still reading". */
 const GUIDANCE_WAIT_MS = 15_000;
 const PENDING = Symbol('pending');
+/** Ask AI: how long an all-caps word stays known as "not a ticker", and how many unknown words one question may check. */
+const NOT_TICKER_TTL_MS = 6 * 3600_000;
+const MAX_TICKER_CHECKS = 5;
 
 /** Short, stable key for a set of articles (order-independent). */
 function idsKey(items: { id: string }[]): string {
@@ -536,15 +542,60 @@ export class MarketService {
     return { guidance: job.value, status: job.value ? 'ok' : 'error', sources };
   }
 
+  /** Company names for matching "Tesla" → TSLA in questions (kept for the process lifetime; names rarely change). */
+  private readonly askNames = new Map<string, string | null>();
+  /** All-caps words that turned out not to be tickers (checked with the quote provider), with the time of the check. */
+  private readonly notTickers = new Map<string, number>();
+
+  private async companyName(symbol: string): Promise<string | null> {
+    if (this.askNames.has(symbol)) return this.askNames.get(symbol) ?? null;
+    const q = await settle(this.quote(symbol));
+    if (q) this.askNames.set(symbol, q.name ?? null);
+    return q?.name ?? null;
+  }
+
+  /** Is this all-caps word a real ticker? Asks the quote provider; a "not found" is remembered for 6 h. */
+  private async isTicker(symbol: string): Promise<boolean> {
+    if (!isValidSymbol(symbol)) return false;
+    const badAt = this.notTickers.get(symbol);
+    if (badAt && Date.now() - badAt < NOT_TICKER_TTL_MS) return false;
+    try {
+      const q = await this.quote(symbol);
+      this.askNames.set(symbol, q.name ?? null);
+      if (q.price != null) return true;
+    } catch (err) {
+      // Rate limits / outages say nothing about the word; only "not found" is remembered.
+      if (!(err instanceof NotFoundError)) return false;
+    }
+    this.notTickers.set(symbol, Date.now());
+    return false;
+  }
+
   /**
-   * Conversational AI assistant grounded in real-time quote, key levels, news, guidance, and analyst estimates.
+   * Which stocks a question is about: the ones it names (tickers, company names) in order, at most
+   * MAX_ASK_STOCKS; else the chat's stocks (`context`); else the page's stock. "My watchlist" adds the
+   * watchlist's prices.
    */
-  async askStock(
-    symbol: string,
-    question: string,
-    lang: Lang,
-    history: { role: 'user' | 'assistant'; content: string }[] = [],
-  ): Promise<AskAiResponse> {
+  async resolveAsk(question: string, context: string[], pageSymbol: string | null, watchlist: string[]): Promise<AskResolveResponse> {
+    const knownSymbols = [...new Set([...context, ...(pageSymbol ? [pageSymbol] : []), ...watchlist])];
+    const known: KnownStock[] = await Promise.all(knownSymbols.map(async (symbol) => ({ symbol, name: await this.companyName(symbol) })));
+    const mentions = findMentions(question, known);
+    const toCheck = mentions.filter((m) => m.needsCheck).slice(0, MAX_TICKER_CHECKS);
+    const checked = new Map(await Promise.all(toCheck.map(async (m) => [m.symbol, await this.isTicker(m.symbol)] as const)));
+    const named = mentions.filter((m) => (m.needsCheck ? checked.get(m.symbol) === true : true)).map((m) => m.symbol);
+
+    const watch = mentionsWatchlist(question);
+    let symbols = named.slice(0, MAX_ASK_STOCKS);
+    let fromContext = false;
+    if (!symbols.length && !watch) {
+      symbols = context.length ? context.slice(0, MAX_ASK_STOCKS) : pageSymbol ? [pageSymbol] : [];
+      fromContext = symbols.length > 0;
+    }
+    return { symbols, watchlist: watch, truncated: named.length > MAX_ASK_STOCKS, fromContext };
+  }
+
+  /** The verified facts block + source chips for one stock. `labelled` prefixes the sources with the ticker. */
+  private async stockFacts(symbol: string, lang: Lang, labelled: boolean): Promise<{ block: string; sources: AskSource[] }> {
     const [quote, levels, news, insight, events] = await Promise.all([
       settle(this.quote(symbol, true)),
       settle(this.levels(symbol, '1D')),
@@ -552,92 +603,57 @@ export class MarketService {
       settle(this.insight(symbol, lang)),
       settle(this.events(symbol)),
     ]);
-
+    const th = lang === 'th';
+    const pre = labelled ? `${symbol} · ` : '';
     const sources: AskSource[] = [];
+    const src = (id: string, label: string, type: AskSource['type']) => sources.push({ id: `${symbol}:${id}`, label: pre + label, type, symbol });
+
     if (news && news.items.length > 0) {
-      sources.push({
-        id: 'news',
-        label: lang === 'th' ? `ข่าว · ${Math.min(news.items.length, 5)} บทความ` : `News · ${Math.min(news.items.length, 5)} articles`,
-        type: 'news',
-      });
+      const n = Math.min(news.items.length, 8);
+      src('news', th ? `ข่าว · ${n} บทความ` : `News · ${n} articles`, 'news');
     }
     if (quote?.meta) {
       const timeStr = quote.meta.updatedAt
         ? new Date(quote.meta.updatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
         : '';
-      sources.push({
-        id: 'price',
-        label: `${lang === 'th' ? 'ราคา' : 'Price'} · ${quote.meta.source}${timeStr ? ' ' + timeStr : ''}`,
-        type: 'price',
-      });
+      src('price', `${th ? 'ราคา' : 'Price'} · ${quote.meta.source}${timeStr ? ' ' + timeStr : ''}`, 'price');
     }
-    if (levels) {
-      sources.push({
-        id: 'levels',
-        label: `${lang === 'th' ? 'แนวรับแนวต้าน' : 'Key levels'} · 1D`,
-        type: 'levels',
-      });
-    }
+    if (levels) src('levels', `${th ? 'แนวรับแนวต้าน' : 'Key levels'} · 1D`, 'levels');
     if (insight?.guidance || (insight?.guidanceSources && insight.guidanceSources.length > 0)) {
-      sources.push({
-        id: 'guidance',
-        label: `Guidance · ${insight.guidance?.meta?.source ?? 'SEC EDGAR'}`,
-        type: 'guidance',
-      });
+      src('guidance', `${th ? 'แนวทางบริษัท' : 'Guidance'} · ${insight.guidance?.meta?.source ?? 'SEC EDGAR'}`, 'guidance');
     }
     if (insight?.priceTargets || insight?.estimates || insight?.ratings) {
-      sources.push({
-        id: 'analyst',
-        label: `${lang === 'th' ? 'นักวิเคราะห์' : 'Analyst'} · ${insight.priceTargets?.meta?.source ?? 'FMP'}`,
-        type: 'analyst',
-      });
+      src('analyst', `${th ? 'นักวิเคราะห์' : 'Analyst'} · ${insight.priceTargets?.meta?.source ?? 'FMP'}`, 'analyst');
     }
 
     const facts: string[] = [];
-    facts.push(`TARGET SYMBOL: ${symbol}`);
     if (quote) {
       facts.push(
-        `QUOTE: Name=${quote.name ?? symbol}, Price=${quote.price ?? 'N/A'} ${quote.currency}, Change=${quote.change ?? 'N/A'}, ChangePct=${quote.changePct != null ? quote.changePct.toFixed(2) + '%' : 'N/A'}, High=${quote.high ?? 'N/A'}, Low=${quote.low ?? 'N/A'}, Open=${quote.open ?? 'N/A'}, PrevClose=${quote.prevClose ?? 'N/A'}, MarketCap=${quote.marketCap ?? 'N/A'}, PE_TTM=${quote.peTTM ?? 'N/A'}, 52wHigh=${quote.week52High ?? 'N/A'}, 52wLow=${quote.week52Low ?? 'N/A'}, MarketState=${quote.marketState}`,
+        `QUOTE: Name=${quote.name ?? symbol}, Price=${quote.price ?? 'N/A'} ${quote.currency}, Change=${quote.change ?? 'N/A'}, ChangePct=${pct(quote.changePct)}, High=${quote.high ?? 'N/A'}, Low=${quote.low ?? 'N/A'}, Open=${quote.open ?? 'N/A'}, PrevClose=${quote.prevClose ?? 'N/A'}, MarketCap=${quote.marketCap ?? 'N/A'}, PE_TTM=${quote.peTTM ?? 'N/A'}, 52wHigh=${quote.week52High ?? 'N/A'}, 52wLow=${quote.week52Low ?? 'N/A'}, MarketState=${quote.marketState}`,
       );
+    } else {
+      facts.push('QUOTE: not available right now.');
     }
     if (levels) {
       const p = levels.pivots;
-      if (p) {
-        facts.push(`PIVOT LEVELS (1D): Pivot=${p.P}, S1=${p.S1}, S2=${p.S2}, R1=${p.R1}, R2=${p.R2}`);
-      }
-      if (levels.supports.length > 0) {
-        facts.push(`SUPPORTS: ${levels.supports.map((s) => `${s.price} (${s.strength})`).join(', ')}`);
-      }
-      if (levels.resistances.length > 0) {
-        facts.push(`RESISTANCES: ${levels.resistances.map((r) => `${r.price} (${r.strength})`).join(', ')}`);
-      }
+      if (p) facts.push(`PIVOT LEVELS (1D): Pivot=${p.P}, S1=${p.S1}, S2=${p.S2}, R1=${p.R1}, R2=${p.R2}`);
+      if (levels.supports.length > 0) facts.push(`SUPPORTS: ${levels.supports.map((s) => `${s.price} (${s.strength})`).join(', ')}`);
+      if (levels.resistances.length > 0) facts.push(`RESISTANCES: ${levels.resistances.map((r) => `${r.price} (${r.strength})`).join(', ')}`);
     }
     if (news && news.items.length > 0) {
-      if (news.summary?.text) {
-        facts.push(`RECENT NEWS SUMMARY: ${news.summary.text}`);
-      }
-      facts.push(
-        `RECENT HEADLINES:\n${news.items.slice(0, 8).map((n) => `- ${n.headline} (${n.sentiment ?? 'neutral'}) [Source: ${n.source}]`).join('\n')}`,
-      );
+      if (news.summary?.text) facts.push(`RECENT NEWS SUMMARY: ${news.summary.text}`);
+      facts.push(`RECENT HEADLINES:\n${news.items.slice(0, 8).map((n) => `- ${n.headline} (${n.sentiment ?? 'neutral'}) [Source: ${n.source}]`).join('\n')}`);
     }
     if (insight) {
-      if (insight.profile) {
-        facts.push(`PROFILE: ${insight.profile.description ?? ''} (CEO: ${insight.profile.ceo?.name ?? 'N/A'}, HQ: ${insight.profile.hq ?? 'N/A'})`);
-      }
+      if (insight.profile) facts.push(`PROFILE: ${insight.profile.description ?? ''} (CEO: ${insight.profile.ceo?.name ?? 'N/A'}, HQ: ${insight.profile.hq ?? 'N/A'})`);
       if (insight.guidance) {
         facts.push(
           `GUIDANCE (FY ${insight.guidance.fiscalYear ?? ''}): Revenue=${insight.guidance.revenueGuidance?.value ?? 'N/A'}, EPS=${insight.guidance.epsGuidance?.value ?? 'N/A'}, Priorities=${insight.guidance.priorities.map((p) => p?.value).filter(Boolean).join('; ')}`,
         );
       }
-      if (insight.priceTargets) {
-        facts.push(`ANALYST TARGETS: Avg=${insight.priceTargets.avg ?? 'N/A'}, Low=${insight.priceTargets.low ?? 'N/A'}, High=${insight.priceTargets.high ?? 'N/A'}`);
-      }
-      if (insight.ratings) {
-        facts.push(`RATINGS: Buy=${insight.ratings.buy ?? 0}, Hold=${insight.ratings.hold ?? 0}, Sell=${insight.ratings.sell ?? 0}`);
-      }
-      if (insight.earnings?.date) {
-        facts.push(`NEXT EARNINGS DATE: ${insight.earnings.date}`);
-      }
+      if (insight.priceTargets) facts.push(`ANALYST TARGETS: Avg=${insight.priceTargets.avg ?? 'N/A'}, Low=${insight.priceTargets.low ?? 'N/A'}, High=${insight.priceTargets.high ?? 'N/A'}`);
+      if (insight.ratings) facts.push(`RATINGS: Buy=${insight.ratings.buy ?? 0}, Hold=${insight.ratings.hold ?? 0}, Sell=${insight.ratings.sell ?? 0}`);
+      if (insight.earnings?.date) facts.push(`NEXT EARNINGS DATE: ${insight.earnings.date}`);
     }
     if (events && events.earnings.length > 0) {
       const recent = events.earnings[0];
@@ -645,10 +661,51 @@ export class MarketService {
         `LATEST EARNINGS EVENT: Date=${recent.date}, EPS Actual=${recent.epsActual ?? 'N/A'} vs Est=${recent.epsEstimate ?? 'N/A'}, Rev Actual=${recent.revenueActual ?? 'N/A'} vs Est=${recent.revenueEstimate ?? 'N/A'}`,
       );
     }
+    return { block: `=== ${symbol} ===\n${facts.join('\n\n')}`, sources };
+  }
 
-    const isThai = lang === 'th' || /[\u0E00-\u0E7F]/.test(question);
+  /**
+   * "Ask AI": a conversational answer grounded in the app's own data. The question may name any stocks
+   * (tickers, company names, "my watchlist"); see resolveAsk for which ones are looked up.
+   */
+  async ask(input: {
+    question: string;
+    lang: Lang;
+    history?: { role: 'user' | 'assistant'; content: string }[];
+    context?: string[];
+    pageSymbol?: string | null;
+    watchlist?: string[];
+  }): Promise<AskAiResponse> {
+    const { question, lang } = input;
+    const watchSymbols = input.watchlist ?? [];
+    const plan = await this.resolveAsk(question, input.context ?? [], input.pageSymbol ?? null, watchSymbols);
+    const labelled = plan.symbols.length > 1 || plan.watchlist;
+
+    const [stocks, watchQuotes] = await Promise.all([
+      Promise.all(plan.symbols.map((s) => this.stockFacts(s, lang, labelled))),
+      plan.watchlist ? this.quotes(watchSymbols) : Promise.resolve([] as Quote[]),
+    ]);
+
+    const sources: AskSource[] = stocks.flatMap((s) => s.sources);
+    const blocks = stocks.map((s) => s.block);
+    if (plan.watchlist) {
+      if (watchQuotes.length) {
+        blocks.unshift(
+          `=== WATCHLIST (${watchQuotes.length} stocks, latest prices only) ===\n${watchQuotes
+            .map((q) => `- ${q.symbol} (${q.name ?? q.symbol}): Price=${q.price ?? 'N/A'} ${q.currency}, Change=${q.change ?? 'N/A'}, ChangePct=${pct(q.changePct)}`)
+            .join('\n')}`,
+        );
+        sources.unshift({ id: 'watchlist', label: `${lang === 'th' ? 'รายการเฝ้าดู' : 'Watchlist'} · ${watchQuotes.length} · ${watchQuotes[0].meta.source}`, type: 'watchlist' });
+      } else {
+        blocks.unshift("=== WATCHLIST ===\nThe user's watchlist is empty.");
+      }
+    }
+    if (!blocks.length) blocks.push('No stock data was looked up: the question names no stock and the chat has none.');
+
+    const isThai = lang === 'th' || /[฀-๿]/.test(question);
+    const about = [...(plan.watchlist ? ['the watchlist'] : []), ...plan.symbols].join(', ');
     const systemInstruction = `You are an AI financial market assistant inside the Trading Monitor app.
-You provide clear, accurate, and objective answers about ${symbol} to help users understand what the market data shows.
+You provide clear, accurate, and objective answers about stocks to help users understand what the market data shows.${about ? `\nThis question is about: ${about}.` : ''}
 
 CRITICAL RULES:
 1. STRICT GROUNDING: Ground your answers firmly in the verified data provided below. Do not hallucinate or invent news, guidance, or price levels. If the requested information is not in the data, state that clearly.
@@ -663,35 +720,36 @@ CRITICAL RULES:
    - Bold key numbers, price values, percentages, and price levels (e.g. **$168.89**, **-3.14%**, **$172.50**, **S1 $166.10**, **R1 $171.40**).
    - Use bullet points with bold prefixes for key factors/drivers (e.g. "• **Sector pullback**: ...").
    - Keep answers well-structured, concise, and easy to read.
+5. SEVERAL STOCKS: When the data covers more than one stock, label every number with its ticker, compare them side by side when asked, and never mix up which number belongs to which stock.
+6. MISSING STOCKS: If the user asks about a stock that has no data below, say you don't have its data and suggest naming its ticker (e.g. "$TSLA").${
+      plan.truncated ? `\n7. The user named more than ${MAX_ASK_STOCKS} stocks; only the first ${MAX_ASK_STOCKS} were looked up. Say so in one short line.` : ''
+    }
 
-VERIFIED DATA FOR ${symbol}:
-${facts.join('\n\n')}`;
+VERIFIED DATA:
+${blocks.join('\n\n')}`;
 
     const conversationMessages = [
       { role: 'system' as const, content: systemInstruction },
-      ...history.slice(-6).map((m) => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content })),
+      ...(input.history ?? []).slice(-6).map((m) => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content })),
       { role: 'user' as const, content: question },
     ];
 
     const activeAi = this.ai.llm ?? (this.providers.mockCapabilities().length > 0 ? this.ai.mock : this.ai.keyword);
-    let answer = '';
-    if (activeAi.ask) {
-      try {
-        answer = await activeAi.ask(conversationMessages);
-      } catch (err) {
-        if (this.ai.mock.ask) {
-          answer = await this.ai.mock.ask(conversationMessages);
-        } else {
-          throw err;
-        }
-      }
-    }
+    // A failed model call is an error for the user to retry — never a canned demo answer about another stock.
+    const answer = activeAi.ask ? await activeAi.ask(conversationMessages) : '';
 
     const modelName = (activeAi as unknown as { model?: string }).model ?? activeAi.name.split(' · ')[0] ?? activeAi.name;
     return {
       answer: answer.trim(),
       sources,
       model: modelName,
+      symbols: plan.symbols,
+      watchlist: plan.watchlist,
+      truncated: plan.truncated,
     };
   }
+}
+
+function pct(n: number | null | undefined): string {
+  return n != null ? `${n.toFixed(2)}%` : 'N/A';
 }

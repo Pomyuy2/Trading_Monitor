@@ -4,6 +4,7 @@ import { isRange, RANGES, type PriceLevel, type Range } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMeta } from '@/lib/api';
+import { takeAskReopen } from '@/lib/ask-ai-store';
 import { loadPref, savePref } from '@/lib/prefs';
 import { useLiveQuote } from '@/lib/use-live-quote';
 import { AskAiPanel } from './AskAiPanel';
@@ -47,6 +48,10 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
 
   // Remember the symbol; restore prefs from localStorage if the cookies were cleared.
   useEffect(() => savePref('symbol', symbol), [symbol]);
+  // "Open … chart" in Ask AI moved here: keep the chat panel open (wide screens).
+  useEffect(() => {
+    if (takeAskReopen()) setShowAskAi(true);
+  }, []);
   useEffect(() => {
     const r = loadPref('range');
     if (r && isRange(r) && r !== initial.range) setRange(r);
@@ -218,7 +223,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       <AlertDialog open={dialog === 'alert'} onClose={() => setDialog(null)} symbol={symbol} quote={live.data} range={range} preset={alertPreset} />
       <CompareDialog open={dialog === 'compare'} onClose={() => setDialog(null)} symbol={symbol} current={compares} max={MAX_COMPARES} onPick={addCompare} />
       <ShortcutsDialog open={dialog === 'shortcuts'} onClose={() => setDialog(null)} />
-      <AskAiPanel open={showAskAi} onClose={() => setShowAskAi(false)} symbol={symbol} quote={live.data} />
+      <AskAiPanel open={showAskAi} onClose={() => setShowAskAi(false)} pageSymbol={symbol} />
       <AlertCenter />
     </div>
   );
