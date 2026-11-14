@@ -34,7 +34,7 @@ export function StatsCard({ quote }: { quote: Quote | undefined }) {
 
   return (
     <Card id="stats" title={t('title')} footer={<SourceLine meta={quote?.meta} />}>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-5">
         {quote
           ? rows.map((r) => (
               <div key={r.label} className="min-w-0">
