@@ -134,6 +134,8 @@
     "sentimentPending": "Sentiment tags: keyword rules for now — AI tags are on the way.",
     "summaryUpdating": "Updating with newer articles…",
     "seeAllNews": "See all news",
+    "showMore": "Show {count} more",
+    "showLess": "Show less",
     "mood24h": "Last 24 h headlines:",
     "moodLabel": "Last 24 hours of headlines: {up} positive, {down} negative, {flat} neutral",
     "summaryPending": "Writing the AI summary… (first time for this stock can take up to a minute)",

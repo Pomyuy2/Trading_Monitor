@@ -87,7 +87,7 @@ html[lang='th'] body {
 /* ---------- Dashboard grid ----------
    phone:  price, chart, tabs, then one active panel
    lg:     sidebar + stacked main
-   xl:     chart | key levels + news side by side, stats under chart, insight row below */
+   xl:     chart + stats | key levels, then news full width (two columns), insight row below */
 .dash-grid {
   display: flex;
   flex-direction: column;
@@ -117,20 +117,10 @@ html[lang='th'] body {
       'price price'
       'summary summary'
       'chart levels'
-      'chart news'
-      'stats news'
+      'stats levels'
+      'news news'
       'insight insight';
     align-items: start;
-  }
-  /* News fills the height of chart + stats and scrolls inside, so it never stretches those rows. */
-  .area-news {
-    position: relative;
-    align-self: stretch;
-    min-height: 320px; /* fills (chart - key levels) + stats; scrolls inside */
-  }
-  .area-news > * {
-    position: absolute;
-    inset: 0;
   }
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import type { Sentiment } from '@tm/shared';
+import type { NewsItem, Sentiment } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useNews } from '@/lib/api';
@@ -17,8 +17,6 @@ export function NewsCard({ symbol }: { symbol: string }) {
     <Card
       id="news"
       title={t('title')}
-      className="h-full"
-      bodyClassName="min-h-0 xl:overflow-y-auto"
       footer={
         <div className="space-y-1">
           <SourceLine meta={data?.meta} />
@@ -43,25 +41,58 @@ export function NewsCard({ symbol }: { symbol: string }) {
           {data.items.length === 0 ? (
             <p className="text-sm text-muted">{t('noNews')}</p>
           ) : (
-            <ul className="-mt-3 divide-y divide-border">
-              {data.items.map((n) => (
-                <li key={n.id} className="py-3">
-                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="block min-h-11 rounded text-sm font-medium leading-snug text-text hover:text-accent" lang="en">
-                    {n.headline}
-                  </a>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                    <span>{n.source}</span>
-                    <span aria-hidden>·</span>
-                    <time dateTime={n.publishedAt} title={new Date(n.publishedAt).toLocaleString()}>{timeAgo(n.publishedAt, lang, now)}</time>
-                    {n.sentiment && <SentimentTag s={n.sentiment} />}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <NewsColumns key={symbol} items={data.items} lang={lang} now={now} />
           )}
         </>
       )}
     </Card>
+  );
+}
+
+/** Headlines shown before "Show more" — 5 per column on wide screens. */
+const INITIAL_COUNT = 10;
+
+/** Newest first: the left column holds the first half, the right column the rest (one list on small screens). */
+function NewsColumns({ items, lang, now }: { items: NewsItem[]; lang: ReturnType<typeof useLang>; now: number }) {
+  const t = useTranslations('news');
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? items : items.slice(0, INITIAL_COUNT);
+  const half = Math.ceil(shown.length / 2);
+  const columns = [shown.slice(0, half), shown.slice(half)].filter((c) => c.length > 0);
+  const hidden = items.length - INITIAL_COUNT;
+
+  return (
+    <>
+      <div className="-mt-3 md:grid md:grid-cols-2 md:gap-x-8">
+        {columns.map((col, i) => (
+          <ul key={i} className={cx('divide-y divide-border', i > 0 && 'border-t border-border md:border-t-0')}>
+            {col.map((n) => (
+              <li key={n.id} className="py-3">
+                <a href={n.url} target="_blank" rel="noopener noreferrer" className="block min-h-11 rounded text-sm font-medium leading-snug text-text hover:text-accent" lang="en">
+                  {n.headline}
+                </a>
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                  <span>{n.source}</span>
+                  <span aria-hidden>·</span>
+                  <time dateTime={n.publishedAt} title={new Date(n.publishedAt).toLocaleString()}>{timeAgo(n.publishedAt, lang, now)}</time>
+                  {n.sentiment && <SentimentTag s={n.sentiment} />}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ))}
+      </div>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-2 min-h-11 w-full rounded-lg border border-border text-sm font-medium text-muted hover:border-accent hover:text-accent"
+        >
+          {expanded ? t('showLess') : t('showMore', { count: hidden })}
+        </button>
+      )}
+    </>
   );
 }
 
