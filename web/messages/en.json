@@ -376,6 +376,11 @@
     "modelNote": "AI answers can be wrong — check the linked sources. Model: {model}",
     "disclaimer": "Based on the data shown in the app. Not investment advice.",
     "thinking": "Thinking…",
+    "stop": "Stop",
+    "fetching": "Fetching market data…",
+    "calculating": "Calculating models…",
+    "responding": "Responding…",
+    "stopped": "Generation stopped",
     "error": "Failed to get an answer. Please try again.",
     "emptyState": "Ask anything about {symbol} based on live price, key levels, guidance, and recent news."
   },

@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  AgentStreamEvent,
   Alert,
   AskAiResponse,
   CandleSeries,
@@ -216,6 +217,82 @@ export async function askAi(
     method: 'POST',
     body: JSON.stringify({ symbol: symbol || undefined, question, lang, history }),
   });
+}
+
+/**
+ * Stream AI research response over Server-Sent Events (SSE).
+ */
+export async function askAiStream(
+  symbol: string | undefined,
+  question: string,
+  lang: Lang,
+  history: { role: 'user' | 'assistant'; content: string }[] | undefined,
+  onEvent: (event: AgentStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch('/api/ai/ask/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    body: JSON.stringify({ symbol: symbol || undefined, question, lang, history }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    throw new ApiError(res.status, `AI stream failed (HTTP ${res.status}): ${errorText}`);
+  }
+
+  if (!res.body) {
+    throw new Error('No response body received from AI stream');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Match complete SSE messages separated by double newlines (\n\n or \r\n\r\n)
+      let match: RegExpExecArray | null;
+      while ((match = /(?:\r?\n){2}/.exec(buffer)) !== null) {
+        const block = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+
+        let eventType = '';
+        let dataText = '';
+
+        const lines = block.split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) continue; // Skip comments and empty lines
+          if (trimmed.startsWith('event:')) {
+            eventType = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            const d = trimmed.slice(5).trim();
+            dataText = dataText ? `${dataText}\n${d}` : d;
+          }
+        }
+
+        if (dataText) {
+          try {
+            const parsedData = JSON.parse(dataText);
+            onEvent({ type: (eventType || 'text_delta') as any, data: parsedData });
+          } catch {
+            // ignore malformed frame
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 // ---- Portfolio Ledger APIs ----

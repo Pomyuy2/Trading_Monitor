@@ -518,7 +518,66 @@ export interface ChatMessage {
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
   ts: number;
+  isStreaming?: boolean;
+  streamingStatus?: string;
 }
+
+export type AgentStreamEventType =
+  | 'agent_start'
+  | 'tool_start'
+  | 'tool_result'
+  | 'text_delta'
+  | 'report_ready'
+  | 'done'
+  | 'error';
+
+export interface AgentStartEvent {
+  query: string;
+  symbol?: string;
+}
+
+export interface ToolStartEvent {
+  tool: string;
+  args: Record<string, unknown>;
+  step: number;
+}
+
+export interface ToolResultEvent {
+  tool: string;
+  success: boolean;
+  durationMs: number;
+  summary: string;
+  error?: string;
+  evidenceSource?: AskSource;
+}
+
+export interface TextDeltaEvent {
+  delta: string;
+}
+
+export interface ReportReadyEvent {
+  report: InvestmentResearchReport;
+}
+
+export interface StreamDoneEvent {
+  executionTimeMs: number;
+  model: string;
+  sources: AskSource[];
+  toolSteps: ToolExecutionStep[];
+}
+
+export interface StreamErrorEvent {
+  message: string;
+}
+
+export type AgentStreamEvent =
+  | { type: 'agent_start'; data: AgentStartEvent }
+  | { type: 'tool_start'; data: ToolStartEvent }
+  | { type: 'tool_result'; data: ToolResultEvent }
+  | { type: 'text_delta'; data: TextDeltaEvent }
+  | { type: 'report_ready'; data: ReportReadyEvent }
+  | { type: 'done'; data: StreamDoneEvent }
+  | { type: 'error'; data: StreamErrorEvent };
 
 export interface AskAiRequest {
   symbol?: string;

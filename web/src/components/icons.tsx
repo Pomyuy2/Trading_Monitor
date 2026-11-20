@@ -67,3 +67,6 @@ export const EyeOffIcon = (p: SVGProps<SVGSVGElement>) => (
 export const UserIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 );
+export const StopIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)} fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+);

@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
-import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse, decodePayload } from '@tm/shared';
+import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse, decodePayload, type AgentStreamEvent, type InvestmentResearchReport } from '@tm/shared';
 import Fastify, { type FastifyReply } from 'fastify';
 import { AnthropicAi } from './ai/anthropic-ai.js';
 import { RouterAi } from './ai/router-ai.js';
@@ -413,6 +413,213 @@ app.post('/api/ai/ask', async (req, reply) => {
     return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
   }
   return reply.code(400).send({ error: 'AI Assistant requires symbol or active agent' });
+});
+
+app.post('/api/ai/ask/stream', async (req, reply) => {
+  const parsed = askBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'Invalid request body' });
+  }
+
+  let s: string | null = null;
+  if (parsed.data.symbol) {
+    s = parseSymbol(parsed.data.symbol, reply);
+    if (!s) return;
+  }
+
+  const uid = await resolveUserId(req);
+  const ctx: AgentContext = {
+    userId: uid,
+    lang: parsed.data.lang,
+    market,
+    portfolio,
+  };
+
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const sendEvent = (event: AgentStreamEvent) => {
+    if (reply.raw.writableEnded || reply.raw.destroyed) return;
+    reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+  };
+
+  const heartbeatTimer = setInterval(() => {
+    if (reply.raw.writableEnded || reply.raw.destroyed) {
+      clearInterval(heartbeatTimer);
+      return;
+    }
+    reply.raw.write(': heartbeat\n\n');
+  }, 5_000);
+
+  const abortController = new AbortController();
+  req.raw.on('close', () => {
+    clearInterval(heartbeatTimer);
+    abortController.abort();
+  });
+
+  if (process.env.DEMO_MODE === 'true' && s) {
+    try {
+      const sym = s;
+      const isThai = parsed.data.lang === 'th';
+      sendEvent({ type: 'agent_start', data: { query: parsed.data.question, symbol: sym } });
+
+      const demoSteps = [
+        { tool: 'get_quote', args: { symbol: sym }, durationMs: 15, summary: `Loaded ${sym} quote` },
+        { tool: 'calculate_indicators', args: { symbol: sym }, durationMs: 25, summary: 'Calculated technical indicators' },
+        { tool: 'calculate_valuation', args: { symbol: sym }, durationMs: 30, summary: 'Calculated 3-scenario DCF' },
+        { tool: 'analyze_stock_risk', args: { symbol: sym }, durationMs: 20, summary: 'Calculated VaR and Beta' },
+      ];
+
+      for (let i = 0; i < demoSteps.length; i++) {
+        if (abortController.signal.aborted) break;
+        const st = demoSteps[i];
+        sendEvent({ type: 'tool_start', data: { tool: st.tool, args: st.args, step: i + 1 } });
+        await new Promise((r) => setTimeout(r, 20));
+        sendEvent({
+          type: 'tool_result',
+          data: { tool: st.tool, success: true, durationMs: st.durationMs, summary: st.summary },
+        });
+      }
+
+      const fullText = isThai
+        ? `รายงานวิเคราะห์เชิงปริมาณสำหรับ ${sym}: มูลค่าทางบัญชีและผลตอบแทนอยู่ในเกณฑ์ดี แนวโน้มทางเทคนิคเป็นบวก`
+        : `Quantitative research report for ${sym}: Valuation DCF scenarios indicate attractive upside under base assumptions with strong technical momentum.`;
+
+      const words = fullText.split(' ');
+      for (const word of words) {
+        if (abortController.signal.aborted) break;
+        sendEvent({ type: 'text_delta', data: { delta: word + ' ' } });
+        await new Promise((r) => setTimeout(r, 15));
+      }
+
+      const demoReport: InvestmentResearchReport = {
+        symbol: sym,
+        title: `${sym} Investment Research Report`,
+        horizon: 'medium',
+        verdict: 'ATTRACTIVE_UNDER_ASSUMPTIONS',
+        summary: `Demonstrates resilient operating margins and solid free cash flow generation. Current price offers favorable risk/reward profile relative to intrinsic value.`,
+        valuationScenarios: {
+          currentPrice: 180.25,
+          baseFairValue: 195.0,
+          bull: { scenario: 'bull', impliedFairValue: 245.0, upsideDownsidePercent: 36.1, keyAssumptions: '15% FCF growth, 8% WACC' },
+          base: { scenario: 'base', impliedFairValue: 195.0, upsideDownsidePercent: 18.2, keyAssumptions: '10% FCF growth, 9% WACC' },
+          bear: { scenario: 'bear', impliedFairValue: 140.0, upsideDownsidePercent: -15.5, keyAssumptions: '5% FCF growth, 10.5% WACC' },
+          keyTakeaway: 'Current market price provides attractive margin of safety relative to base case intrinsic value.',
+        },
+        fundamentals: {
+          revenueGrowthYoY: 0.145,
+          netMargin: 0.238,
+          fcfMargin: 0.215,
+          roe: 0.485,
+          roic: 0.321,
+          debtToEquity: 1.15,
+          keyTakeaway: 'High return on capital and expanding operating leverage.',
+        },
+        technicals: {
+          currentPrice: 180.25,
+          trend: 'bullish',
+          rsi14: 58.2,
+          supportPrice: 165.0,
+          resistancePrice: 195.0,
+          keyTakeaway: 'Trading comfortably above 50-day and 200-day moving averages with healthy momentum.',
+        },
+        riskAssessment: {
+          riskRating: 'moderate',
+          downsideRisks: ['Macro slowdown impacting enterprise spend', 'Regulatory scrutiny in core markets'],
+          thesisInvalidation: [
+            'Daily close below 200-day moving average ($160.00)',
+            'Operating margin compression below 22% for two consecutive quarters',
+          ],
+        },
+        portfolioConsiderations: {
+          suitability: 'Suitable for moderate-to-aggressive growth portfolios seeking core exposure.',
+        },
+        dataQuality: {
+          staleFeeds: [],
+          sources: [
+            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
+          ],
+        },
+      };
+
+      sendEvent({ type: 'report_ready', data: { report: demoReport } });
+      sendEvent({
+        type: 'done',
+        data: {
+          executionTimeMs: 150,
+          model: 'demo-research-v1',
+          sources: [
+            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
+            { id: `val-${sym}`, label: `${sym} Valuation (Base Fair Value: $195.00)`, type: 'general' },
+            { id: `tech-${sym}`, label: `${sym} Technicals (RSI 58.2, Trend: bullish)`, type: 'levels' },
+          ],
+          toolSteps: demoSteps.map((st) => ({
+            tool: st.tool,
+            args: st.args,
+            durationMs: st.durationMs,
+            success: true,
+            summary: st.summary,
+          })),
+        },
+      });
+    } catch (err) {
+      sendEvent({ type: 'error', data: { message: (err as Error).message } });
+    } finally {
+      clearInterval(heartbeatTimer);
+      if (!reply.raw.writableEnded) reply.raw.end();
+    }
+    return;
+  }
+
+  if (researchAgent) {
+    try {
+      await researchAgent.researchStream(
+        parsed.data.question.trim(),
+        s ?? undefined,
+        parsed.data.lang,
+        ctx,
+        parsed.data.history,
+        sendEvent,
+        abortController.signal,
+      );
+    } catch (err) {
+      if (!abortController.signal.aborted) {
+        sendEvent({ type: 'error', data: { message: (err as Error).message } });
+      }
+    } finally {
+      clearInterval(heartbeatTimer);
+      if (!reply.raw.writableEnded) reply.raw.end();
+    }
+    return;
+  }
+
+  try {
+    sendEvent({ type: 'agent_start', data: { query: parsed.data.question, symbol: s ?? undefined } });
+    const ans = s ? await market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history) : null;
+    if (ans) {
+      sendEvent({ type: 'text_delta', data: { delta: ans.answer } });
+      sendEvent({
+        type: 'done',
+        data: {
+          executionTimeMs: 100,
+          model: ans.model || 'fallback',
+          sources: ans.sources || [],
+          toolSteps: [],
+        },
+      });
+    } else {
+      sendEvent({ type: 'error', data: { message: 'AI Assistant requires symbol or active agent' } });
+    }
+  } catch (err) {
+    sendEvent({ type: 'error', data: { message: (err as Error).message } });
+  } finally {
+    clearInterval(heartbeatTimer);
+    if (!reply.raw.writableEnded) reply.raw.end();
+  }
 });
 
 app.get('/api/watchlist', async (req) => {
