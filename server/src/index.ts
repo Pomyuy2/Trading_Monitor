@@ -23,7 +23,9 @@ import { UserService } from './auth/user-service.js';
 import { getAuthUserFromCookie } from './auth/session.js';
 import { PortfolioService } from './portfolio/portfolio-service.js';
 import { InvestmentResearchAgent } from './agent/research-agent.js';
+import { ConversationService } from './agent/conversation-service.js';
 import type { AgentContext } from './agent/types.js';
+import type { ChatContextMode } from '@tm/shared';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -65,6 +67,7 @@ await push.init();
 const users = new UserService(db, process.env, log);
 await users.init();
 const portfolio = new PortfolioService(db);
+const conversationService = new ConversationService(db);
 const researchAgent =
   env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
     ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log)
@@ -292,6 +295,9 @@ const askBodySchema = z.object({
   symbol: z.string().min(1).max(15).optional(),
   question: z.string().min(1).max(1000),
   lang: z.enum(['en', 'th']).optional().default('en'),
+  contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
+  contextRef: z.string().max(50).optional().nullable(),
+  conversationId: z.string().optional(),
   history: z
     .array(
       z.object({
@@ -301,6 +307,145 @@ const askBodySchema = z.object({
     )
     .optional(),
 });
+
+function getDemoAnalysis(
+  question: string,
+  symbol: string | null,
+  lang: 'en' | 'th',
+  contextMode: 'global' | 'stock' | 'portfolio',
+  contextRef?: string | null,
+) {
+  const isThai = lang === 'th';
+  const sym = symbol || (contextMode === 'stock' && contextRef ? contextRef : null);
+
+  if (sym) {
+    return {
+      answer: isThai
+        ? `รายงานวิเคราะห์เชิงปริมาณสำหรับ ${sym}: มูลค่าทางบัญชีและผลตอบแทนอยู่ในเกณฑ์ดี แนวโน้มทางเทคนิคเป็นบวก`
+        : `Quantitative research report for ${sym}: Valuation DCF scenarios indicate attractive upside under base assumptions with strong technical momentum.`,
+      sources: [
+        { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' as const },
+        { id: `val-${sym}`, label: `${sym} Valuation (Base Fair Value: $195.00)`, type: 'general' as const },
+        { id: `tech-${sym}`, label: `${sym} Technicals (RSI 58.2, Trend: bullish)`, type: 'levels' as const },
+      ],
+      toolSteps: [
+        { tool: 'get_quote', args: { symbol: sym }, durationMs: 15, success: true, summary: `Loaded ${sym} quote` },
+        { tool: 'calculate_indicators', args: { symbol: sym }, durationMs: 25, success: true, summary: 'Calculated technical indicators' },
+        { tool: 'calculate_valuation', args: { symbol: sym }, durationMs: 30, success: true, summary: 'Calculated 3-scenario DCF' },
+        { tool: 'analyze_stock_risk', args: { symbol: sym }, durationMs: 20, success: true, summary: 'Calculated VaR and Beta' },
+      ],
+      report: {
+        symbol: sym,
+        title: `${sym} Investment Research Report`,
+        horizon: 'medium' as const,
+        verdict: 'ATTRACTIVE_UNDER_ASSUMPTIONS' as const,
+        summary: `Demonstrates resilient operating margins and solid free cash flow generation. Current price offers favorable risk/reward profile relative to intrinsic value.`,
+        valuationScenarios: {
+          currentPrice: 180.25,
+          baseFairValue: 195.0,
+          bull: { scenario: 'bull' as const, impliedFairValue: 245.0, upsideDownsidePercent: 36.1, keyAssumptions: '15% FCF growth, 8% WACC' },
+          base: { scenario: 'base' as const, impliedFairValue: 195.0, upsideDownsidePercent: 18.2, keyAssumptions: '10% FCF growth, 9% WACC' },
+          bear: { scenario: 'bear' as const, impliedFairValue: 140.0, upsideDownsidePercent: -15.5, keyAssumptions: '5% FCF growth, 10.5% WACC' },
+          keyTakeaway: 'Current market price provides attractive margin of safety relative to base case intrinsic value.',
+        },
+        fundamentals: {
+          revenueGrowthYoY: 0.145,
+          netMargin: 0.238,
+          fcfMargin: 0.215,
+          roe: 0.485,
+          roic: 0.321,
+          debtToEquity: 1.15,
+          keyTakeaway: 'High return on capital and expanding operating leverage.',
+        },
+        technicals: {
+          currentPrice: 180.25,
+          trend: 'bullish' as const,
+          rsi14: 58.2,
+          supportPrice: 165.0,
+          resistancePrice: 195.0,
+          keyTakeaway: 'Trading comfortably above 50-day and 200-day moving averages with healthy momentum.',
+        },
+        riskAssessment: {
+          riskRating: 'moderate' as const,
+          downsideRisks: ['Macro slowdown impacting enterprise spend', 'Regulatory scrutiny in core markets'],
+          thesisInvalidation: [
+            'Daily close below 200-day moving average ($160.00)',
+            'Operating margin compression below 22% for two consecutive quarters',
+          ],
+        },
+        portfolioConsiderations: {
+          suitability: 'Suitable for moderate-to-aggressive growth portfolios seeking core exposure.',
+        },
+        dataQuality: {
+          staleFeeds: [],
+          sources: [
+            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' as const },
+          ],
+        },
+      },
+    };
+  }
+
+  // Symbol is null (global or portfolio mode)
+  const words = question.split(/[^A-Za-z0-9]/).filter(Boolean);
+  const possibleTickers = Array.from(new Set(
+    words
+      .filter((w) => /^[A-Z]{2,5}$/.test(w) && !['DCF', 'VAR', 'RSI', 'MACD', 'HHI', 'PE', 'USA', 'AI', 'USD', 'THE', 'AND', 'FOR', 'HOW', 'WHY', 'WHAT', 'STOCK', 'PRICE', 'TELL', 'ABOUT', 'ME', 'IS'].includes(w.toUpperCase()))
+      .map((w) => w.toUpperCase()),
+  ));
+
+  if (possibleTickers.length >= 2) {
+    const [t1, t2] = possibleTickers;
+    return {
+      answer: isThai
+        ? `เปรียบเทียบเชิงวิเคราะห์ระหว่าง ${t1} และ ${t2}: ${t1} มีอัตรากำไรจากการดำเนินงานและการเติบโตของกระแสเงินสดอิสระสูงกว่า ขณะที่ ${t2} มีอัตราส่วนการประเมินมูลค่าต่อกำไรที่ยืดหยุ่นกว่าสำหรับการลงทุนระยะยาว`
+        : `Comparative research analysis between ${t1} and ${t2}: ${t1} exhibits superior operating margins and free cash flow generation driven by enterprise demand, while ${t2} offers competitive multiple expansion opportunities under diversified workload assumptions.`,
+      sources: [
+        { id: `quote-${t1}`, label: `${t1} Quote · MockProvider`, type: 'price' as const },
+        { id: `quote-${t2}`, label: `${t2} Quote · MockProvider`, type: 'price' as const },
+        { id: `compare-${t1}-${t2}`, label: `${t1} vs ${t2} Relative Valuation Multiple Comparison`, type: 'general' as const },
+      ],
+      toolSteps: [
+        { tool: 'get_quote', args: { symbol: t1 }, durationMs: 15, success: true, summary: `Loaded ${t1} quote` },
+        { tool: 'get_quote', args: { symbol: t2 }, durationMs: 15, success: true, summary: `Loaded ${t2} quote` },
+        { tool: 'compare_stocks', args: { symbols: [t1, t2] }, durationMs: 40, success: true, summary: `Compared ${t1} vs ${t2} metrics` },
+      ],
+      report: null,
+    };
+  }
+
+  if (possibleTickers.length === 1) {
+    const singleSym = possibleTickers[0];
+    return getDemoAnalysis(question, singleSym, lang, 'stock', singleSym);
+  }
+
+  if (contextMode === 'portfolio' || /portfolio|holdings|rebalance/i.test(question)) {
+    return {
+      answer: isThai
+        ? `การวิเคราะห์สถานะพอร์ตโฟลิโอ: ตรวจสอบการกระจายความเสี่ยง ดัชนี HHI อยู่ในระดับกระจายตัวเหมาะสม ต้นทุนเฉลี่ยและสัดส่วนสินทรัพย์สอดคล้องกับเป้าหมายความเสี่ยงปานกลาง`
+        : `Portfolio health analysis: Assessed active holdings, unrealized P&L, and asset concentration. The Herfindahl-Hirschman Index (HHI) reflects healthy diversification across equity sectors with moderate risk exposure.`,
+      sources: [
+        { id: 'user-portfolios', label: 'User Portfolios · Portfolio Ledger (SQLite)', type: 'general' as const },
+        { id: 'portfolio-primary', label: 'Primary Portfolio Asset Allocation & Concentration', type: 'general' as const },
+      ],
+      toolSteps: [
+        { tool: 'get_user_portfolios', args: {}, durationMs: 10, success: true, summary: 'Loaded user portfolios' },
+        { tool: 'get_portfolio_analysis', args: {}, durationMs: 25, success: true, summary: 'Calculated portfolio metrics & concentration' },
+      ],
+      report: null,
+    };
+  }
+
+  // General investing concept question
+  return {
+    answer: isThai
+      ? `การประเมินมูลค่ากระแสเงินสดคิดลด (DCF) เป็นวิธีการประเมินมูลค่าที่แท้จริงของกิจการ โดยคาดการณ์กระแสเงินสดอิสระในอนาคต (Free Cash Flow) แล้วคิดลดกลับมาเป็นมูลค่าปัจจุบันด้วยต้นทุนเงินทุนถัวเฉลี่ยถ่วงน้ำหนัก (WACC) ซึ่งช่วยให้ผู้ลงทุนสามารถจำลองสถานการณ์ทั้ง Bull, Base และ Bear ได้อย่างเป็นระบบ`
+      : `Discounted Cash Flow (DCF) valuation calculates the intrinsic fair value of an asset by projecting future unlevered free cash flows and discounting them back to the present value using the Weighted Average Cost of Capital (WACC). It provides a structured margin of safety across Bull, Base, and Bear scenarios without relying solely on short-term market multiples.`,
+    sources: [],
+    toolSteps: [],
+    report: null,
+  };
+}
 
 app.post('/api/ai/ask', async (req, reply) => {
   const parsed = askBodySchema.safeParse(req.body);
@@ -315,6 +460,17 @@ app.post('/api/ai/ask', async (req, reply) => {
   }
 
   const uid = await resolveUserId(req);
+  const contextMode: ChatContextMode = parsed.data.contextMode || (s ? 'stock' : 'global');
+  let contextRef = parsed.data.contextRef || (contextMode === 'stock' ? s ?? undefined : undefined);
+
+  // Validate portfolio context ownership if requested
+  if (contextMode === 'portfolio' && contextRef) {
+    const list = await portfolio.listPortfolios(uid);
+    if (!list.some((p) => p.id === contextRef)) {
+      contextRef = undefined; // Strip unauthorized or missing portfolio ID
+    }
+  }
+
   const ctx: AgentContext = {
     userId: uid,
     lang: parsed.data.lang,
@@ -322,76 +478,25 @@ app.post('/api/ai/ask', async (req, reply) => {
     portfolio,
   };
 
-  if (process.env.DEMO_MODE === 'true' && s) {
-    const sym = s;
-    const isThai = parsed.data.lang === 'th';
-    return {
-      answer: isThai
-        ? `รายงานวิเคราะห์เชิงปริมาณสำหรับ ${sym}: มูลค่าทางบัญชีและผลตอบแทนอยู่ในเกณฑ์ดี แนวโน้มทางเทคนิคเป็นบวก`
-        : `Quantitative research report for ${sym}: Valuation DCF scenarios indicate attractive upside under base assumptions with strong technical momentum.`,
-      sources: [
-        { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
-        { id: `val-${sym}`, label: `${sym} Valuation (Base Fair Value: $195.00)`, type: 'general' },
-        { id: `tech-${sym}`, label: `${sym} Technicals (RSI 58.2, Trend: bullish)`, type: 'levels' },
-      ],
+  if (process.env.DEMO_MODE === 'true') {
+    const demo = getDemoAnalysis(parsed.data.question.trim(), s, parsed.data.lang, contextMode, contextRef);
+    const resp: any = {
+      answer: demo.answer,
+      sources: demo.sources,
+      toolSteps: demo.toolSteps,
+      report: demo.report,
       model: 'demo-research-v1',
       executionTimeMs: 120,
-      toolSteps: [
-        { tool: 'get_quote', args: { symbol: sym }, durationMs: 15, success: true, summary: `Loaded ${sym} quote` },
-        { tool: 'calculate_indicators', args: { symbol: sym }, durationMs: 25, success: true, summary: 'Calculated technical indicators' },
-        { tool: 'calculate_valuation', args: { symbol: sym }, durationMs: 30, success: true, summary: 'Calculated 3-scenario DCF' },
-        { tool: 'analyze_stock_risk', args: { symbol: sym }, durationMs: 20, success: true, summary: 'Calculated VaR and Beta' },
-      ],
-      report: {
-        symbol: sym,
-        title: `${sym} Investment Research Report`,
-        horizon: 'medium',
-        verdict: 'ATTRACTIVE_UNDER_ASSUMPTIONS',
-        summary: `Demonstrates resilient operating margins and solid free cash flow generation. Current price offers favorable risk/reward profile relative to intrinsic value.`,
-        valuationScenarios: {
-          currentPrice: 180.25,
-          baseFairValue: 195.0,
-          bull: { scenario: 'bull', impliedFairValue: 245.0, upsideDownsidePercent: 36.1, keyAssumptions: '15% FCF growth, 8% WACC' },
-          base: { scenario: 'base', impliedFairValue: 195.0, upsideDownsidePercent: 18.2, keyAssumptions: '10% FCF growth, 9% WACC' },
-          bear: { scenario: 'bear', impliedFairValue: 140.0, upsideDownsidePercent: -15.5, keyAssumptions: '5% FCF growth, 10.5% WACC' },
-          keyTakeaway: 'Current market price provides attractive margin of safety relative to base case intrinsic value.',
-        },
-        fundamentals: {
-          revenueGrowthYoY: 0.145,
-          netMargin: 0.238,
-          fcfMargin: 0.215,
-          roe: 0.485,
-          roic: 0.321,
-          debtToEquity: 1.15,
-          keyTakeaway: 'High return on capital and expanding operating leverage.',
-        },
-        technicals: {
-          currentPrice: 180.25,
-          trend: 'bullish',
-          rsi14: 58.2,
-          supportPrice: 165.0,
-          resistancePrice: 195.0,
-          keyTakeaway: 'Trading comfortably above 50-day and 200-day moving averages with healthy momentum.',
-        },
-        riskAssessment: {
-          riskRating: 'moderate',
-          downsideRisks: ['Macro slowdown impacting enterprise spend', 'Regulatory scrutiny in core markets'],
-          thesisInvalidation: [
-            'Daily close below 200-day moving average ($160.00)',
-            'Operating margin compression below 22% for two consecutive quarters',
-          ],
-        },
-        portfolioConsiderations: {
-          suitability: 'Suitable for moderate-to-aggressive growth portfolios seeking core exposure.',
-        },
-        dataQuality: {
-          staleFeeds: [],
-          sources: [
-            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
-          ],
-        },
-      },
     };
+
+    if (parsed.data.conversationId) {
+      await conversationService.appendMessages(uid, parsed.data.conversationId, [
+        { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+        { id: `a-${Date.now()}`, role: 'assistant', content: resp.answer, sources: resp.sources, report: resp.report, toolSteps: resp.toolSteps, ts: Date.now() },
+      ], contextMode, contextRef).catch(() => {});
+      resp.conversationId = parsed.data.conversationId;
+    }
+    return resp;
   }
 
   if (researchAgent) {
@@ -402,7 +507,16 @@ app.post('/api/ai/ask', async (req, reply) => {
         parsed.data.lang,
         ctx,
         parsed.data.history,
+        contextMode,
+        contextRef,
       );
+      if (parsed.data.conversationId) {
+        await conversationService.appendMessages(uid, parsed.data.conversationId, [
+          { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, ts: Date.now() },
+        ], contextMode, contextRef).catch(() => {});
+        (result as any).conversationId = parsed.data.conversationId;
+      }
       return result;
     } catch (err) {
       app.log.warn(`Research agent failed, falling back to askStock: ${(err as Error).message}`);
@@ -410,7 +524,14 @@ app.post('/api/ai/ask', async (req, reply) => {
   }
 
   if (s) {
-    return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
+    const res = await market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
+    if (parsed.data.conversationId) {
+      await conversationService.appendMessages(uid, parsed.data.conversationId, [
+        { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+        { id: `a-${Date.now()}`, role: 'assistant', content: res.answer, sources: res.sources, ts: Date.now() },
+      ], contextMode, contextRef).catch(() => {});
+    }
+    return res;
   }
   return reply.code(400).send({ error: 'AI Assistant requires symbol or active agent' });
 });
@@ -428,6 +549,17 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
   }
 
   const uid = await resolveUserId(req);
+  const contextMode: ChatContextMode = parsed.data.contextMode || (s ? 'stock' : 'global');
+  let contextRef = parsed.data.contextRef || (contextMode === 'stock' ? s ?? undefined : undefined);
+
+  // Validate portfolio context ownership if requested
+  if (contextMode === 'portfolio' && contextRef) {
+    const list = await portfolio.listPortfolios(uid);
+    if (!list.some((p) => p.id === contextRef)) {
+      contextRef = undefined; // Strip unauthorized or missing portfolio ID
+    }
+  }
+
   const ctx: AgentContext = {
     userId: uid,
     lang: parsed.data.lang,
@@ -442,7 +574,7 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
     'X-Accel-Buffering': 'no',
   });
 
-  const sendEvent = (event: AgentStreamEvent) => {
+  const sendEvent = (event: any) => {
     if (reply.raw.writableEnded || reply.raw.destroyed) return;
     reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
   };
@@ -461,111 +593,50 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
     abortController.abort();
   });
 
-  if (process.env.DEMO_MODE === 'true' && s) {
+  if (process.env.DEMO_MODE === 'true') {
     try {
-      const sym = s;
-      const isThai = parsed.data.lang === 'th';
-      sendEvent({ type: 'agent_start', data: { query: parsed.data.question, symbol: sym } });
+      const demo = getDemoAnalysis(parsed.data.question.trim(), s, parsed.data.lang, contextMode, contextRef);
+      sendEvent({ type: 'agent_start', data: { query: parsed.data.question, symbol: s ?? undefined } });
 
-      const demoSteps = [
-        { tool: 'get_quote', args: { symbol: sym }, durationMs: 15, summary: `Loaded ${sym} quote` },
-        { tool: 'calculate_indicators', args: { symbol: sym }, durationMs: 25, summary: 'Calculated technical indicators' },
-        { tool: 'calculate_valuation', args: { symbol: sym }, durationMs: 30, summary: 'Calculated 3-scenario DCF' },
-        { tool: 'analyze_stock_risk', args: { symbol: sym }, durationMs: 20, summary: 'Calculated VaR and Beta' },
-      ];
-
-      for (let i = 0; i < demoSteps.length; i++) {
+      for (let i = 0; i < demo.toolSteps.length; i++) {
         if (abortController.signal.aborted) break;
-        const st = demoSteps[i];
+        const st = demo.toolSteps[i];
         sendEvent({ type: 'tool_start', data: { tool: st.tool, args: st.args, step: i + 1 } });
         await new Promise((r) => setTimeout(r, 20));
         sendEvent({
           type: 'tool_result',
-          data: { tool: st.tool, success: true, durationMs: st.durationMs, summary: st.summary },
+          data: { tool: st.tool, success: st.success, durationMs: st.durationMs, summary: st.summary },
         });
       }
 
-      const fullText = isThai
-        ? `รายงานวิเคราะห์เชิงปริมาณสำหรับ ${sym}: มูลค่าทางบัญชีและผลตอบแทนอยู่ในเกณฑ์ดี แนวโน้มทางเทคนิคเป็นบวก`
-        : `Quantitative research report for ${sym}: Valuation DCF scenarios indicate attractive upside under base assumptions with strong technical momentum.`;
-
-      const words = fullText.split(' ');
+      const words = demo.answer.split(' ');
       for (const word of words) {
         if (abortController.signal.aborted) break;
         sendEvent({ type: 'text_delta', data: { delta: word + ' ' } });
         await new Promise((r) => setTimeout(r, 15));
       }
 
-      const demoReport: InvestmentResearchReport = {
-        symbol: sym,
-        title: `${sym} Investment Research Report`,
-        horizon: 'medium',
-        verdict: 'ATTRACTIVE_UNDER_ASSUMPTIONS',
-        summary: `Demonstrates resilient operating margins and solid free cash flow generation. Current price offers favorable risk/reward profile relative to intrinsic value.`,
-        valuationScenarios: {
-          currentPrice: 180.25,
-          baseFairValue: 195.0,
-          bull: { scenario: 'bull', impliedFairValue: 245.0, upsideDownsidePercent: 36.1, keyAssumptions: '15% FCF growth, 8% WACC' },
-          base: { scenario: 'base', impliedFairValue: 195.0, upsideDownsidePercent: 18.2, keyAssumptions: '10% FCF growth, 9% WACC' },
-          bear: { scenario: 'bear', impliedFairValue: 140.0, upsideDownsidePercent: -15.5, keyAssumptions: '5% FCF growth, 10.5% WACC' },
-          keyTakeaway: 'Current market price provides attractive margin of safety relative to base case intrinsic value.',
-        },
-        fundamentals: {
-          revenueGrowthYoY: 0.145,
-          netMargin: 0.238,
-          fcfMargin: 0.215,
-          roe: 0.485,
-          roic: 0.321,
-          debtToEquity: 1.15,
-          keyTakeaway: 'High return on capital and expanding operating leverage.',
-        },
-        technicals: {
-          currentPrice: 180.25,
-          trend: 'bullish',
-          rsi14: 58.2,
-          supportPrice: 165.0,
-          resistancePrice: 195.0,
-          keyTakeaway: 'Trading comfortably above 50-day and 200-day moving averages with healthy momentum.',
-        },
-        riskAssessment: {
-          riskRating: 'moderate',
-          downsideRisks: ['Macro slowdown impacting enterprise spend', 'Regulatory scrutiny in core markets'],
-          thesisInvalidation: [
-            'Daily close below 200-day moving average ($160.00)',
-            'Operating margin compression below 22% for two consecutive quarters',
-          ],
-        },
-        portfolioConsiderations: {
-          suitability: 'Suitable for moderate-to-aggressive growth portfolios seeking core exposure.',
-        },
-        dataQuality: {
-          staleFeeds: [],
-          sources: [
-            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
-          ],
-        },
-      };
+      if (demo.report) {
+        sendEvent({ type: 'report_ready', data: { report: demo.report } });
+      }
 
-      sendEvent({ type: 'report_ready', data: { report: demoReport } });
       sendEvent({
         type: 'done',
         data: {
           executionTimeMs: 150,
           model: 'demo-research-v1',
-          sources: [
-            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
-            { id: `val-${sym}`, label: `${sym} Valuation (Base Fair Value: $195.00)`, type: 'general' },
-            { id: `tech-${sym}`, label: `${sym} Technicals (RSI 58.2, Trend: bullish)`, type: 'levels' },
-          ],
-          toolSteps: demoSteps.map((st) => ({
-            tool: st.tool,
-            args: st.args,
-            durationMs: st.durationMs,
-            success: true,
-            summary: st.summary,
-          })),
+          sources: demo.sources,
+          toolSteps: demo.toolSteps,
+          conversationId: parsed.data.conversationId,
         },
       });
+
+      if (parsed.data.conversationId && !abortController.signal.aborted) {
+        await conversationService.appendMessages(uid, parsed.data.conversationId, [
+          { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: demo.answer, sources: demo.sources, report: demo.report, toolSteps: demo.toolSteps, ts: Date.now() },
+        ], contextMode, contextRef).catch(() => {});
+      }
     } catch (err) {
       sendEvent({ type: 'error', data: { message: (err as Error).message } });
     } finally {
@@ -577,7 +648,7 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
 
   if (researchAgent) {
     try {
-      await researchAgent.researchStream(
+      const result = await researchAgent.researchStream(
         parsed.data.question.trim(),
         s ?? undefined,
         parsed.data.lang,
@@ -585,7 +656,15 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
         parsed.data.history,
         sendEvent,
         abortController.signal,
+        contextMode,
+        contextRef,
       );
+      if (parsed.data.conversationId && result && !abortController.signal.aborted) {
+        await conversationService.appendMessages(uid, parsed.data.conversationId, [
+          { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, ts: Date.now() },
+        ], contextMode, contextRef).catch(() => {});
+      }
     } catch (err) {
       if (!abortController.signal.aborted) {
         sendEvent({ type: 'error', data: { message: (err as Error).message } });
@@ -609,8 +688,15 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
           model: ans.model || 'fallback',
           sources: ans.sources || [],
           toolSteps: [],
+          conversationId: parsed.data.conversationId,
         },
       });
+      if (parsed.data.conversationId && !abortController.signal.aborted) {
+        await conversationService.appendMessages(uid, parsed.data.conversationId, [
+          { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: ans.answer, sources: ans.sources, ts: Date.now() },
+        ], contextMode, contextRef).catch(() => {});
+      }
     } else {
       sendEvent({ type: 'error', data: { message: 'AI Assistant requires symbol or active agent' } });
     }
@@ -620,6 +706,57 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
     clearInterval(heartbeatTimer);
     if (!reply.raw.writableEnded) reply.raw.end();
   }
+});
+
+// ---- Conversation History REST Endpoints ----
+app.get('/api/ai/conversations', async (req) => {
+  const uid = await resolveUserId(req);
+  return conversationService.listConversations(uid);
+});
+
+const createConversationSchema = z.object({
+  title: z.string().max(100).optional(),
+  contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
+  contextRef: z.string().max(50).optional().nullable(),
+  messages: z.array(z.any()).optional(),
+});
+
+app.post('/api/ai/conversations', async (req, reply) => {
+  const parsed = createConversationSchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid conversation payload' });
+  const uid = await resolveUserId(req);
+  const created = await conversationService.createConversation(uid, parsed.data);
+  return reply.code(201).send(created);
+});
+
+app.get<{ Params: { id: string } }>('/api/ai/conversations/:id', async (req, reply) => {
+  const uid = await resolveUserId(req);
+  const c = await conversationService.getConversation(uid, req.params.id);
+  if (!c) return reply.code(404).send({ error: 'Conversation not found' });
+  return c;
+});
+
+const updateConversationSchema = z.object({
+  title: z.string().max(100).optional(),
+  contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
+  contextRef: z.string().max(50).optional().nullable(),
+  messages: z.array(z.any()).optional(),
+});
+
+app.patch<{ Params: { id: string } }>('/api/ai/conversations/:id', async (req, reply) => {
+  const parsed = updateConversationSchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid conversation update' });
+  const uid = await resolveUserId(req);
+  const updated = await conversationService.updateConversation(uid, req.params.id, parsed.data);
+  if (!updated) return reply.code(404).send({ error: 'Conversation not found' });
+  return updated;
+});
+
+app.delete<{ Params: { id: string } }>('/api/ai/conversations/:id', async (req, reply) => {
+  const uid = await resolveUserId(req);
+  const ok = await conversationService.deleteConversation(uid, req.params.id);
+  if (!ok) return reply.code(404).send({ error: 'Conversation not found' });
+  return { ok: true };
 });
 
 app.get('/api/watchlist', async (req) => {

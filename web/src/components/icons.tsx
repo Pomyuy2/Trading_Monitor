@@ -70,3 +70,9 @@ export const UserIcon = (p: SVGProps<SVGSVGElement>) => (
 export const StopIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)} fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
 );
+export const HistoryIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></svg>
+);
+export const TrashIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M3 6h18M19 6v14c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V6m3 0V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2" /></svg>
+);

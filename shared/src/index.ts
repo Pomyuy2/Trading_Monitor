@@ -559,11 +559,37 @@ export interface ReportReadyEvent {
   report: InvestmentResearchReport;
 }
 
+export type ChatContextMode = 'global' | 'stock' | 'portfolio';
+
+export interface ConversationSummary {
+  id: string;
+  userId: string;
+  title: string;
+  contextMode: ChatContextMode;
+  contextRef?: string | null;
+  messageCount: number;
+  lastMessagePreview?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  userId: string;
+  title: string;
+  contextMode: ChatContextMode;
+  contextRef?: string | null;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StreamDoneEvent {
   executionTimeMs: number;
   model: string;
   sources: AskSource[];
   toolSteps: ToolExecutionStep[];
+  conversationId?: string;
 }
 
 export interface StreamErrorEvent {
@@ -583,6 +609,9 @@ export interface AskAiRequest {
   symbol?: string;
   question: string;
   lang: Lang;
+  contextMode?: ChatContextMode;
+  contextRef?: string;
+  conversationId?: string;
   history?: { role: 'user' | 'assistant'; content: string }[];
 }
 
@@ -593,6 +622,7 @@ export interface AskAiResponse {
   toolSteps?: ToolExecutionStep[];
   model: string;
   executionTimeMs?: number;
+  conversationId?: string;
 }
 
 // ---- Portfolio Ledger Types ----

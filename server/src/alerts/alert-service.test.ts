@@ -24,7 +24,7 @@ const quiet = { info() {}, warn() {} };
 
 let svc: AlertService;
 let fired: Alert[];
-const settle = () => new Promise((r) => setTimeout(r, 30)); // trigger() writes to the DB asynchronously
+const settle = () => new Promise((r) => setTimeout(r, 50)); // trigger() writes to the DB asynchronously
 const tick = async (p: number, ts = Date.now()) => {
   svc.handleTick({ symbol: 'TEST', price: p, ts });
   await settle();

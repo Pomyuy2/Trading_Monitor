@@ -92,6 +92,7 @@ model User {
   pushSubscriptions PushSubscription[]
   portfolios        Portfolio[]
   investmentProfile UserInvestmentProfile?
+  conversations     Conversation[]
 }
 
 /// Rate limiting for invalid invite codes during sign-up (max 5 attempts in 5 hours).
@@ -172,4 +173,20 @@ model UserInvestmentProfile {
   user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// User-scoped AI Chat conversations.
+model Conversation {
+  id          String   @id @default(cuid())
+  userId      String   @default("default-user")
+  title       String
+  contextMode String   @default("global") // global | stock | portfolio
+  contextRef  String?  // symbol if stock, portfolioId if portfolio
+  messages    String   // JSON stringified ChatMessage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
 }

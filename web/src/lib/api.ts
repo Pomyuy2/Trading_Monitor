@@ -5,6 +5,10 @@ import type {
   Alert,
   AskAiResponse,
   CandleSeries,
+  ChatContextMode,
+  ChatMessage,
+  ConversationDetail,
+  ConversationSummary,
   EventsResponse,
   NewAlert,
   InsightResponse,
@@ -212,10 +216,23 @@ export async function askAi(
   question: string,
   lang: Lang,
   history?: { role: 'user' | 'assistant'; content: string }[],
+  options?: {
+    contextMode?: ChatContextMode;
+    contextRef?: string | null;
+    conversationId?: string;
+  },
 ): Promise<AskAiResponse> {
   return fetchJson<AskAiResponse>('/api/ai/ask', {
     method: 'POST',
-    body: JSON.stringify({ symbol: symbol || undefined, question, lang, history }),
+    body: JSON.stringify({
+      symbol: symbol || undefined,
+      question,
+      lang,
+      history,
+      contextMode: options?.contextMode,
+      contextRef: options?.contextRef,
+      conversationId: options?.conversationId,
+    }),
   });
 }
 
@@ -229,6 +246,11 @@ export async function askAiStream(
   history: { role: 'user' | 'assistant'; content: string }[] | undefined,
   onEvent: (event: AgentStreamEvent) => void,
   signal?: AbortSignal,
+  options?: {
+    contextMode?: ChatContextMode;
+    contextRef?: string | null;
+    conversationId?: string;
+  },
 ): Promise<void> {
   const res = await fetch('/api/ai/ask/stream', {
     method: 'POST',
@@ -236,7 +258,15 @@ export async function askAiStream(
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify({ symbol: symbol || undefined, question, lang, history }),
+    body: JSON.stringify({
+      symbol: symbol || undefined,
+      question,
+      lang,
+      history,
+      contextMode: options?.contextMode,
+      contextRef: options?.contextRef,
+      conversationId: options?.conversationId,
+    }),
     signal,
   });
 
@@ -351,5 +381,47 @@ export async function updateInvestmentProfile(profile: Partial<UserProfileData>)
   return fetchJson<UserProfileData>('/api/portfolio/profile', {
     method: 'PUT',
     body: JSON.stringify(profile),
+  });
+}
+
+// ---- AI Conversation APIs ----
+export async function fetchConversations(): Promise<ConversationSummary[]> {
+  return fetchJson<ConversationSummary[]>('/api/ai/conversations');
+}
+
+export async function fetchConversation(id: string): Promise<ConversationDetail> {
+  return fetchJson<ConversationDetail>(`/api/ai/conversations/${enc(id)}`);
+}
+
+export async function createConversation(data: {
+  title?: string;
+  contextMode?: ChatContextMode;
+  contextRef?: string | null;
+  messages?: ChatMessage[];
+}): Promise<ConversationDetail> {
+  return fetchJson<ConversationDetail>('/api/ai/conversations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateConversation(
+  id: string,
+  data: {
+    title?: string;
+    contextMode?: ChatContextMode;
+    contextRef?: string | null;
+    messages?: ChatMessage[];
+  },
+): Promise<ConversationDetail> {
+  return fetchJson<ConversationDetail>(`/api/ai/conversations/${enc(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteConversation(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/api/ai/conversations/${enc(id)}`, {
+    method: 'DELETE',
   });
 }

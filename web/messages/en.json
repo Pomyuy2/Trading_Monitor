@@ -29,6 +29,7 @@
     "searching": "Searching…",
     "noResults": "No matches",
     "openWatchlist": "Open watchlist",
+    "aiChat": "AI Chat",
     "language": "Language",
     "lightTheme": "Switch to light theme",
     "darkTheme": "Switch to dark theme"
@@ -357,10 +358,22 @@
   "askAi": {
     "title": "Ask AI",
     "subtitle": "Answers use this app's data for {symbol}: price, chart, key levels, news and company info.",
+    "globalSubtitle": "Institutional investment research, fundamental valuation, stock comparison, and portfolio intelligence.",
     "newChat": "New chat",
     "close": "Close panel",
     "back": "Back",
     "tryAsking": "Try asking",
+    "context": "Context",
+    "globalMode": "Global",
+    "stockMode": "Stock",
+    "portfolioMode": "Portfolio",
+    "conversations": "History",
+    "deleteChat": "Delete",
+    "deleteConfirm": "Delete this conversation?",
+    "noChats": "No saved conversations yet",
+    "selectPortfolio": "Select portfolio…",
+    "allPortfolios": "All Portfolios",
+    "switchContext": "Switch context",
     "suggestions": {
       "valuation": "Run DCF valuation & scenario analysis",
       "risk": "Analyze downside risk and VaR",
@@ -370,11 +383,18 @@
       "earnings": "When is the next earnings date?",
       "translate": "Explain this in Thai"
     },
+    "suggestionsGlobal": {
+      "compare": "Compare NVDA and AMD metrics",
+      "valuation": "Explain DCF vs relative valuation multiples",
+      "portfolio": "Analyze my portfolio risk & concentration",
+      "macro": "What are the key downside risk factors?"
+    },
     "inputLabel": "Your question",
     "placeholder": "Ask about {symbol} — e.g. \"Is the price near a key level?\"",
+    "placeholderGlobal": "Ask anything — compare stocks, valuation models, or portfolio risk…",
     "send": "Send question",
     "modelNote": "AI answers can be wrong — check the linked sources. Model: {model}",
-    "disclaimer": "Based on the data shown in the app. Not investment advice.",
+    "disclaimer": "Based on verified financial models & provider market feeds. Not financial advice.",
     "thinking": "Thinking…",
     "stop": "Stop",
     "fetching": "Fetching market data…",
@@ -382,7 +402,8 @@
     "responding": "Responding…",
     "stopped": "Generation stopped",
     "error": "Failed to get an answer. Please try again.",
-    "emptyState": "Ask anything about {symbol} based on live price, key levels, guidance, and recent news."
+    "emptyState": "Ask anything about {symbol} based on live price, key levels, guidance, and recent news.",
+    "globalEmptyState": "Ask anything across global markets — compare stocks, analyze DCF valuations, check your portfolio risk, or explore investing concepts."
   },
   "auth": {
     "signIn": "Sign In",

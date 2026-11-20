@@ -40,7 +40,14 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
   const [showPivots, setShowPivots] = useState(initial.pivots);
   const [tab, setTab] = useState<Tab>('news');
   const [compares, setCompares] = useState<string[]>([]);
-  const [showAskAi, setShowAskAi] = useState(false);
+  const [aiChatState, setAiChatState] = useState<{
+    open: boolean;
+    mode: 'global' | 'stock' | 'portfolio';
+    symbol?: string;
+  }>({
+    open: false,
+    mode: 'global',
+  });
   const [dialog, setDialog] = useState<'alert' | 'compare' | 'watchlist' | 'shortcuts' | null>(null);
   const [alertPreset, setAlertPreset] = useState<AlertPreset>(null);
   const live = useLiveQuote(symbol, true);
@@ -93,7 +100,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       } else if (k === 'c' || k === 'C') {
         setDialog('compare');
       } else if (k === 'a' || k === 'A') {
-        setShowAskAi((v) => !v);
+        setAiChatState((prev) => ({ open: !prev.open, mode: 'stock', symbol }));
       } else if (k === '?') {
         setDialog('shortcuts');
       } else {
@@ -118,7 +125,10 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       </a>
       <ConnectionBanner />
       <MockBanner />
-      <Header onOpenWatchlist={() => setDialog('watchlist')} />
+      <Header
+        onOpenWatchlist={() => setDialog('watchlist')}
+        onOpenAiChat={() => setAiChatState({ open: true, mode: 'global' })}
+      />
       <MarketStatusBar />
 
       <div className="mx-auto w-full max-w-[1600px] flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -141,7 +151,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
               maxCompares={MAX_COMPARES}
               onAlert={() => openAlert()}
               onCompare={() => setDialog('compare')}
-              onAskAi={() => setShowAskAi(true)}
+              onAskAi={() => setAiChatState({ open: true, mode: 'stock', symbol })}
             />
           </div>
           <div className="area-summary min-w-0">
@@ -151,7 +161,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
                 setTab('news');
                 requestAnimationFrame(() => document.getElementById('news-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
               }}
-              onAskAi={() => setShowAskAi(true)}
+              onAskAi={() => setAiChatState({ open: true, mode: 'stock', symbol })}
             />
           </div>
           <div className="area-chart min-w-0">
@@ -218,7 +228,13 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       <AlertDialog open={dialog === 'alert'} onClose={() => setDialog(null)} symbol={symbol} quote={live.data} range={range} preset={alertPreset} />
       <CompareDialog open={dialog === 'compare'} onClose={() => setDialog(null)} symbol={symbol} current={compares} max={MAX_COMPARES} onPick={addCompare} />
       <ShortcutsDialog open={dialog === 'shortcuts'} onClose={() => setDialog(null)} />
-      <AskAiPanel open={showAskAi} onClose={() => setShowAskAi(false)} symbol={symbol} quote={live.data} />
+      <AskAiPanel
+        open={aiChatState.open}
+        onClose={() => setAiChatState((prev) => ({ ...prev, open: false }))}
+        initialMode={aiChatState.mode}
+        symbol={aiChatState.symbol}
+        quote={live.data}
+      />
       <AlertCenter />
     </div>
   );

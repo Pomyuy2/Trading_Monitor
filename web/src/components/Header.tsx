@@ -7,10 +7,16 @@ import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { signOut } from 'next-auth/react';
 import { useSearch } from '@/lib/api';
 import { loadPref, restoreCookie, savePref, setTheme, useTheme, type Theme } from '@/lib/prefs';
-import { ListIcon, LogoIcon, LogOutIcon, MoonIcon, SearchIcon, SunIcon } from './icons';
+import { ListIcon, LogoIcon, LogOutIcon, MoonIcon, SearchIcon, SparkIcon, SunIcon } from './icons';
 import { btn, cx, useLang } from './ui';
 
-export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
+export function Header({
+  onOpenWatchlist,
+  onOpenAiChat,
+}: {
+  onOpenWatchlist: () => void;
+  onOpenAiChat?: () => void;
+}) {
   const t = useTranslations();
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/95 backdrop-blur">
@@ -27,7 +33,17 @@ export function Header({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
         <div className="min-w-0 flex-1">
           <SearchBox />
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenAiChat}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-panel px-2.5 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:bg-panel-2 transition-colors sm:px-3"
+            title={t('header.aiChat')}
+            aria-label={t('header.aiChat')}
+          >
+            <SparkIcon width={16} height={16} className="text-accent" />
+            <span className="hidden sm:inline">{t('header.aiChat')}</span>
+          </button>
           <ThemeToggle />
           <LanguageSwitch />
           <SignOutButton />
@@ -167,7 +183,7 @@ function SearchBox() {
   const showList = open && q.trim().length > 0;
 
   return (
-    <div ref={wrap} className="relative mx-auto max-w-xl">
+    <div ref={wrap} className="relative mx-auto w-full max-w-xl">
       <label htmlFor={id} className="sr-only">
         {t('searchLabel')}
       </label>
@@ -191,7 +207,7 @@ function SearchBox() {
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
         aria-keyshortcuts="/"
-        className="h-11 w-full rounded-md border border-border bg-panel pl-10 pr-10 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+        className="h-11 w-full min-w-0 rounded-md border border-border bg-panel pl-10 pr-10 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
       />
       <kbd aria-hidden className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-border px-1.5 font-mono text-xs text-muted sm:block">/</kbd>
       {showList && (

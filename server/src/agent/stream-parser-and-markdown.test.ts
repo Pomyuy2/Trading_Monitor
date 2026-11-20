@@ -52,7 +52,7 @@ def pe_ratio(price, eps):
 describe('Client SSE Stream Parser Logic', () => {
   // The SSE parser algorithm implemented in web/src/lib/api.ts
   function parseSseChunks(chunks: Uint8Array[]): { eventType: string; data: Record<string, unknown> }[] {
-    const decoder = new TextDecoder('utf-8', { stream: true });
+    const decoder = new TextDecoder('utf-8');
     let buffer = '';
     const parsedEvents: { eventType: string; data: Record<string, unknown> }[] = [];
 

@@ -94,7 +94,7 @@ describe('ToolOrchestrator.runStream', () => {
             updatedAt: new Date().toISOString(),
           },
           summary: `${args.symbol} price is $230.50`,
-          evidenceSource: { id: 'src-1', label: `${args.symbol} Quote` },
+          evidenceSource: { id: 'src-1', label: `${args.symbol} Quote`, type: 'price' },
         };
       },
     };
