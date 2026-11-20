@@ -3,7 +3,9 @@
 import type {
   AgentStreamEvent,
   Alert,
+  AskAiRequest,
   AskAiResponse,
+  AskResolveResponse,
   CandleSeries,
   ChatContextMode,
   ChatMessage,
@@ -210,11 +212,11 @@ export async function setWatchlistGroup(symbol: string, group: string | null) {
   );
 }
 
-/** Ask AI question about a symbol or general research query. */
+/** Ask AI question about a symbol or general research query (supports both object and positional params). */
 export async function askAi(
-  symbol: string | undefined,
-  question: string,
-  lang: Lang,
+  symbolOrReq: string | undefined | AskAiRequest,
+  question?: string,
+  lang?: Lang,
   history?: { role: 'user' | 'assistant'; content: string }[],
   options?: {
     contextMode?: ChatContextMode;
@@ -222,18 +224,34 @@ export async function askAi(
     conversationId?: string;
   },
 ): Promise<AskAiResponse> {
+  if (typeof symbolOrReq === 'object' && symbolOrReq !== null && 'question' in symbolOrReq) {
+    return fetchJson<AskAiResponse>('/api/ai/ask', {
+      method: 'POST',
+      body: JSON.stringify(symbolOrReq),
+    });
+  }
   return fetchJson<AskAiResponse>('/api/ai/ask', {
     method: 'POST',
     body: JSON.stringify({
-      symbol: symbol || undefined,
-      question,
-      lang,
+      symbol: symbolOrReq || undefined,
+      question: question ?? '',
+      lang: lang ?? 'en',
       history,
       contextMode: options?.contextMode,
       contextRef: options?.contextRef,
       conversationId: options?.conversationId,
     }),
   });
+}
+
+/** Which stocks a question would look up (shown under the input while typing; no AI call). */
+export function useAskResolve(question: string, context: string[], pageSymbol: string) {
+  const q = question.trim();
+  return useSWR<AskResolveResponse>(
+    q ? ['/api/ai/resolve', q, context.join(','), pageSymbol] : null,
+    ([url]: [string]) => fetchJson<AskResolveResponse>(url, { method: 'POST', body: JSON.stringify({ question: q, context, pageSymbol }) }),
+    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
 }
 
 /**

@@ -168,6 +168,16 @@ Handle these states:
    - Small trend chart (sparkline) for each stock.
    - Sort by % change, name or price; drag to reorder; optional groups.
    - Summary row: how many stocks are up / down today.
+9. **Ask AI about any stock** (side panel; full screen on phones):
+   - The question can name any stocks: ticker (`NVDA`, `$tsla`), company name (Tesla, Rocket Lab, Thai spellings) or
+     "my watchlist" (all watchlist prices). Up to 3 stocks per question get full detail (quote, key levels, news,
+     guidance, analyst data); more named → only the first 3, and the answer says so.
+   - "Stocks in this chat" chips: a new chat starts with the page's stock; stocks the questions name are added;
+     "+ Add stock" / × to change them. A follow-up that names no stock uses the chips.
+   - A line under the input shows which stocks will be looked up before sending (no AI call).
+   - Answers list the stocks looked up, sources grouped per stock and "Open <ticker>" buttons. The chat stays when
+     moving to another stock. A failed AI call shows an error, never a canned answer.
+   - Layout: Key stats is a full-width row (5 columns on wide screens) so no empty space is left beside it.
 
 Later ideas (not scheduled): phone alerts (LINE Official Account, email or the ntfy app — not Telegram),
 portfolio tracking, AI features with an Anthropic API key, HTTPS hosting/tunnel for phone use, Thai SET stocks.

@@ -14,7 +14,7 @@ import { Change, cx, ErrorState, Skeleton, SourceLine, useLang } from './ui';
 
 const PriceChart = dynamic(() => import('./PriceChart').then((m) => m.PriceChart), {
   ssr: false,
-  loading: () => <Skeleton className="h-[320px] w-full sm:h-[380px] xl:h-[420px]" />,
+  loading: () => <Skeleton className="chart-h w-full" />,
 });
 
 interface Props {
@@ -190,7 +190,7 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
         {error && !series ? (
           <div className="grid h-[320px] place-items-center"><ErrorState error={error} onRetry={() => mutate()} /></div>
         ) : !series && isLoading ? (
-          <Skeleton className="mx-3 h-[320px] sm:h-[380px] xl:h-[420px]" />
+          <Skeleton className="chart-h mx-3" />
         ) : series && candles.length === 0 ? (
           <p className="grid h-[320px] place-items-center text-sm text-muted">{t('noData')}</p>
         ) : series ? (

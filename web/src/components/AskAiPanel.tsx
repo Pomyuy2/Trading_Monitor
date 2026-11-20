@@ -16,15 +16,17 @@ interface Props {
   initialMode?: ChatContextMode;
   symbol?: string;
   quote?: Quote;
+  pageSymbol?: string;
 }
 
-export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quote }: Props) {
+export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quote, pageSymbol }: Props) {
   const t = useTranslations('askAi');
   const lang = useLang();
+  const effectiveSymbol = symbol || pageSymbol || '';
 
   // Context mode: 'global' | 'stock' | 'portfolio'
-  const [contextMode, setContextMode] = useState<ChatContextMode>(initialMode || (symbol ? 'stock' : 'global'));
-  const [activeSymbol, setActiveSymbol] = useState<string>(symbol || '');
+  const [contextMode, setContextMode] = useState<ChatContextMode>(initialMode || (effectiveSymbol ? 'stock' : 'global'));
+  const [activeSymbol, setActiveSymbol] = useState<string>(effectiveSymbol);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('');
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
 
@@ -50,14 +52,14 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
     if (open) {
       if (initialMode) {
         setContextMode(initialMode);
-      } else if (symbol) {
+      } else if (effectiveSymbol) {
         setContextMode('stock');
       }
-      if (symbol) {
-        setActiveSymbol(symbol);
+      if (effectiveSymbol) {
+        setActiveSymbol(effectiveSymbol);
       }
     }
-  }, [open, initialMode, symbol]);
+  }, [open, initialMode, effectiveSymbol]);
 
   // Load conversations list and portfolios when opened
   const loadConversations = useCallback(async () => {
@@ -469,7 +471,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
           t('suggestions.valuation'),
           t('suggestions.risk'),
           t('suggestions.ratios'),
-          t('suggestions.levels'),
+          t('suggestions.levels', { symbol: activeSymbol || 'this stock' }),
           t('suggestions.guidance'),
         ];
 

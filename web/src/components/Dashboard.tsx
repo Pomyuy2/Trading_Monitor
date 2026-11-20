@@ -4,6 +4,7 @@ import { isRange, RANGES, type PriceLevel, type Range } from '@tm/shared';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMeta } from '@/lib/api';
+import { takeAskReopen } from '@/lib/ask-ai-store';
 import { loadPref, savePref } from '@/lib/prefs';
 import { useLiveQuote } from '@/lib/use-live-quote';
 import { AskAiPanel } from './AskAiPanel';
@@ -54,6 +55,10 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
 
   // Remember the symbol; restore prefs from localStorage if the cookies were cleared.
   useEffect(() => savePref('symbol', symbol), [symbol]);
+  // "Open … chart" in Ask AI moved here: keep the chat panel open (wide screens).
+  useEffect(() => {
+    if (takeAskReopen()) setAiChatState({ open: true, mode: 'stock', symbol });
+  }, [symbol]);
   useEffect(() => {
     const r = loadPref('range');
     if (r && isRange(r) && r !== initial.range) setRange(r);
@@ -131,7 +136,7 @@ export function Dashboard({ symbol, initial }: { symbol: string; initial: Initia
       />
       <MarketStatusBar />
 
-      <div className="mx-auto w-full max-w-[1600px] flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="page-width flex-1 gap-4 px-4 py-4 lg:grid lg:grid-cols-[16.25rem_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <div className="sticky top-20 space-y-4">
             <Watchlist current={symbol} />

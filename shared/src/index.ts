@@ -419,7 +419,9 @@ export function isValidSymbol(s: string): boolean {
 export interface AskSource {
   id: string;
   label: string;
-  type: 'news' | 'price' | 'levels' | 'guidance' | 'analyst' | 'general' | 'tool' | 'valuation' | 'risk';
+  type: 'news' | 'price' | 'levels' | 'guidance' | 'analyst' | 'general' | 'tool' | 'valuation' | 'risk' | 'watchlist';
+  /** The stock this source belongs to (answers can cover several stocks). */
+  symbol?: string;
   url?: string;
 }
 
@@ -517,6 +519,10 @@ export interface ChatMessage {
   sources?: AskSource[];
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
+  /** Assistant messages: the stocks the answer looked up, and whether it covered the watchlist / was cut at the limit. */
+  symbols?: string[];
+  watchlist?: boolean;
+  truncated?: boolean;
   ts: number;
   isStreaming?: boolean;
   streamingStatus?: string;
@@ -612,6 +618,10 @@ export interface AskAiRequest {
   contextMode?: ChatContextMode;
   contextRef?: string;
   conversationId?: string;
+  /** Stocks already in this chat (the panel's chips), used when the question names none. Max 3. */
+  context?: string[];
+  /** The stock open on the page; the last fallback when the question and the chat name none. */
+  pageSymbol?: string;
   history?: { role: 'user' | 'assistant'; content: string }[];
 }
 
@@ -623,6 +633,21 @@ export interface AskAiResponse {
   model: string;
   executionTimeMs?: number;
   conversationId?: string;
+  /** Stocks the answer looked up in full detail, in the order the question named them. */
+  symbols?: string[];
+  /** The question was about the watchlist (prices of every watchlist stock were included). */
+  watchlist?: boolean;
+  /** The question named more than MAX_ASK_STOCKS stocks; only the first ones were looked up. */
+  truncated?: boolean;
+}
+
+/** What "Ask AI" would look up for a question, before it is sent (preview under the input). */
+export interface AskResolveResponse {
+  symbols: string[];
+  watchlist: boolean;
+  truncated: boolean;
+  /** true when the question names no stock and the chat / page stocks are used instead. */
+  fromContext: boolean;
 }
 
 // ---- Portfolio Ledger Types ----

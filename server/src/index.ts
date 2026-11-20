@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import { isRange, isValidSymbol, LANGS, normalizeSymbol, type Lang, type MetaResponse, decodePayload, type AgentStreamEvent, type InvestmentResearchReport } from '@tm/shared';
 import Fastify, { type FastifyReply } from 'fastify';
 import { AnthropicAi } from './ai/anthropic-ai.js';
+import { MAX_ASK_STOCKS } from './ai/ask-resolver.js';
 import { RouterAi } from './ai/router-ai.js';
 import { KeywordAi } from './ai/keyword-ai.js';
 import { MockAi } from './ai/mock-ai.js';
@@ -291,10 +292,27 @@ app.get('/api/diagnostics/providers', async () => {
   };
 });
 
+const askSymbolList = z.array(z.string().max(15)).max(10).optional().default([]);
+
+/** Valid, de-duplicated symbols (invalid ones dropped), at most MAX_ASK_STOCKS. */
+function askSymbols(raw: string[]): string[] {
+  return [...new Set(raw.map(normalizeSymbol).filter(isValidSymbol))].slice(0, MAX_ASK_STOCKS);
+}
+function askPageSymbol(raw: string | undefined): string | null {
+  const s = normalizeSymbol(raw ?? '');
+  return isValidSymbol(s) ? s : null;
+}
+async function watchlistSymbols(req: { userId?: string }): Promise<string[]> {
+  const uid = await resolveUserId(req);
+  return (await watchlist.list(uid)).map((w) => w.symbol);
+}
+
 const askBodySchema = z.object({
   symbol: z.string().min(1).max(15).optional(),
+  pageSymbol: z.string().max(15).optional(),
   question: z.string().min(1).max(1000),
   lang: z.enum(['en', 'th']).optional().default('en'),
+  context: askSymbolList,
   contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
   contextRef: z.string().max(50).optional().nullable(),
   conversationId: z.string().optional(),
@@ -302,7 +320,7 @@ const askBodySchema = z.object({
     .array(
       z.object({
         role: z.enum(['user', 'assistant']),
-        content: z.string().max(2000),
+        content: z.string().max(4000),
       }),
     )
     .optional(),
@@ -757,6 +775,16 @@ app.delete<{ Params: { id: string } }>('/api/ai/conversations/:id', async (req, 
   const ok = await conversationService.deleteConversation(uid, req.params.id);
   if (!ok) return reply.code(404).send({ error: 'Conversation not found' });
   return { ok: true };
+});
+
+/** Preview for the Ask AI input: which stocks a question would look up (no AI call). */
+app.post('/api/ai/resolve', async (req, reply) => {
+  const parsed = askBodySchema.pick({ question: true, context: true, pageSymbol: true }).safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'Invalid request body' });
+  }
+  const b = parsed.data;
+  return market.resolveAsk(b.question, askSymbols(b.context), askPageSymbol(b.pageSymbol), await watchlistSymbols(req));
 });
 
 app.get('/api/watchlist', async (req) => {

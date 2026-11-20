@@ -5,7 +5,7 @@ import { LruCache } from '../cache/cache.js';
 import { KeywordAi } from '../ai/keyword-ai.js';
 import { MockAi } from '../ai/mock-ai.js';
 import type { ProviderRegistry } from '../providers/registry.js';
-import { BaseProvider, ProviderAuthError, RateLimitError, type Capability } from '../providers/types.js';
+import { BaseProvider, NotFoundError, ProviderAuthError, RateLimitError, type Capability } from '../providers/types.js';
 import { MarketService, NOT_IN_PLAN } from './market-service.js';
 
 /** A provider whose daily candles either work or are refused by the plan. */
@@ -234,10 +234,20 @@ describe('news summary freshness', () => {
   });
 });
 
-describe('askStock', () => {
-  it('returns grounded answer with sources and model name', async () => {
+describe('ask AI', () => {
+  /** A service whose quote provider knows only `known` symbols, and an AI that records the system prompt. */
+  function askService(known: Record<string, string>, reply = 'ok') {
+    const prompts: string[] = [];
+    const quoteCalls: string[] = [];
     const fmp = new FakeDaily('FMP', false);
-    const mockAi: AiService = {
+    const quoter = Object.assign(fmp, {
+      async getQuote(symbol: string) {
+        quoteCalls.push(symbol);
+        if (!known[symbol]) throw new NotFoundError(symbol);
+        return { symbol, name: known[symbol], price: 100, change: 1, changePct: 1, currency: 'USD', marketState: 'closed', meta: { source: 'FMP', updatedAt: new Date().toISOString() } };
+      },
+    });
+    const llm: AiService = {
       name: 'TestAI',
       sentimentMethod: 'mock',
       canSummarize: true,
@@ -245,20 +255,77 @@ describe('askStock', () => {
       summarizeNews: async () => null,
       tagSentiment: async () => [],
       ask: async (messages) => {
-        expect(messages.some((m) => m.role === 'system' && m.content.includes('AAPL'))).toBe(true);
-        return '**Apple (AAPL)** is trading at **$150.00**. Key resistance is **R1 $155.00**.';
+        prompts.push(messages.find((m) => m.role === 'system')?.content ?? '');
+        return reply;
       },
     };
-    const registry = {
-      for: () => fmp,
-      fallbackFor: () => null,
-      mockCapabilities: () => [],
-    } as unknown as ProviderRegistry;
-    const svc = new MarketService(registry, new LruCache(), { llm: mockAi, keyword: new KeywordAi(), mock: new MockAi() });
+    const registry = { for: () => quoter, fallbackFor: () => null, mockCapabilities: () => [] } as unknown as ProviderRegistry;
+    const svc = new MarketService(registry, new LruCache(), { llm, keyword: new KeywordAi(), mock: new MockAi() });
+    return { svc, prompts, quoteCalls };
+  }
+  const KNOWN = { AAPL: 'Apple Inc.', NVDA: 'NVIDIA Corporation', TSLA: 'Tesla, Inc.', RKLB: 'Rocket Lab USA, Inc.', AMD: 'Advanced Micro Devices, Inc.', MSFT: 'Microsoft Corporation' };
 
-    const res = await svc.askStock('AAPL', 'What are the key levels?', 'en');
+  it('answers about the page stock when the question names none, with the model name', async () => {
+    const { svc, prompts } = askService(KNOWN, '**Apple (AAPL)** is trading at **$100.00**.');
+    const res = await svc.ask({ question: 'What are the key levels?', lang: 'en', pageSymbol: 'AAPL' });
     expect(res.answer).toContain('**Apple (AAPL)**');
     expect(res.model).toBe('TestAI');
-    expect(Array.isArray(res.sources)).toBe(true);
+    expect(res.symbols).toEqual(['AAPL']);
+    expect(prompts[0]).toContain('=== AAPL ===');
+  });
+
+  it('looks up every stock the question names, in order, by ticker or company name', async () => {
+    const { svc, prompts } = askService(KNOWN);
+    const res = await svc.ask({ question: 'Compare tesla with $NVDA and AMD', lang: 'en', pageSymbol: 'AAPL' });
+    expect(res.symbols).toEqual(['TSLA', 'NVDA', 'AMD']);
+    expect(prompts[0]).toContain('=== TSLA ===');
+    expect(prompts[0]).toContain('=== AMD ===');
+    expect(prompts[0]).not.toContain('=== AAPL ===');
+    expect(res.sources.every((s) => s.label.startsWith(`${s.symbol} · `))).toBe(true);
+  });
+
+  it('caps a question at 3 stocks and says it was cut', async () => {
+    const { svc, prompts } = askService(KNOWN);
+    const res = await svc.ask({ question: 'AAPL vs MSFT vs NVDA vs TSLA', lang: 'en' });
+    expect(res.symbols).toEqual(['AAPL', 'MSFT', 'NVDA']);
+    expect(res.truncated).toBe(true);
+    expect(prompts[0]).toContain('only the first 3 were looked up');
+  });
+
+  it('uses the chat stocks for a follow-up that names no stock', async () => {
+    const { svc } = askService(KNOWN);
+    const res = await svc.resolveAsk('which one has better ratings?', ['TSLA', 'NVDA'], 'AAPL', []);
+    expect(res).toEqual({ symbols: ['TSLA', 'NVDA'], watchlist: false, truncated: false, fromContext: true });
+  });
+
+  it('ignores all-caps words that are not tickers, and remembers them', async () => {
+    const { svc, quoteCalls } = askService(KNOWN);
+    expect((await svc.resolveAsk('What did the CEO say about EPS and XYZW?', [], null, [])).symbols).toEqual([]);
+    expect(quoteCalls).toEqual(['XYZW']); // CEO / EPS never reach the provider
+    await svc.resolveAsk('XYZW again?', [], null, []);
+    expect(quoteCalls).toEqual(['XYZW']); // "not a ticker" is remembered
+  });
+
+  it('matches watchlist company names and lower-case tickers the user follows', async () => {
+    const { svc } = askService(KNOWN);
+    const res = await svc.resolveAsk('how is rocket lab doing vs nvda', [], null, ['RKLB', 'NVDA']);
+    expect(res.symbols).toEqual(['RKLB', 'NVDA']);
+  });
+
+  it('adds the watchlist prices for a watchlist question', async () => {
+    const { svc, prompts } = askService(KNOWN);
+    const res = await svc.ask({ question: 'Which stock in my watchlist fell most?', lang: 'en', pageSymbol: 'AAPL', watchlist: ['AAPL', 'TSLA'] });
+    expect(res.watchlist).toBe(true);
+    expect(res.symbols).toEqual([]);
+    expect(prompts[0]).toContain('=== WATCHLIST (2 stocks');
+    expect(res.sources[0].type).toBe('watchlist');
+  });
+
+  it('reports a failed model call as an error instead of a canned answer', async () => {
+    const { svc } = askService(KNOWN);
+    (svc as unknown as { ai: { llm: AiService } }).ai.llm.ask = async () => {
+      throw new Error('router down');
+    };
+    await expect(svc.ask({ question: 'Tell me about AAPL', lang: 'en' })).rejects.toThrow('router down');
   });
 });
