@@ -11,10 +11,13 @@ import type {
   LevelsResponse,
   MetaResponse,
   NewsResponse,
+  PortfolioSummary,
   Quote,
   Range,
+  RebalanceAction,
   Sparkline,
   SymbolMatch,
+  UserProfileData,
   WatchlistItem,
 } from '@tm/shared';
 import useSWR, { mutate } from 'swr';
@@ -202,15 +205,74 @@ export async function setWatchlistGroup(symbol: string, group: string | null) {
   );
 }
 
-/** Ask AI question about a symbol. */
+/** Ask AI question about a symbol or general research query. */
 export async function askAi(
-  symbol: string,
+  symbol: string | undefined,
   question: string,
   lang: Lang,
   history?: { role: 'user' | 'assistant'; content: string }[],
 ): Promise<AskAiResponse> {
   return fetchJson<AskAiResponse>('/api/ai/ask', {
     method: 'POST',
-    body: JSON.stringify({ symbol, question, lang, history }),
+    body: JSON.stringify({ symbol: symbol || undefined, question, lang, history }),
+  });
+}
+
+// ---- Portfolio Ledger APIs ----
+export async function fetchPortfolios(): Promise<PortfolioSummary[]> {
+  return fetchJson<PortfolioSummary[]>('/api/portfolio');
+}
+
+export async function fetchPortfolio(id: string): Promise<PortfolioSummary> {
+  return fetchJson<PortfolioSummary>(`/api/portfolio/${enc(id)}`);
+}
+
+export async function createPortfolio(name: string, currency = 'USD', description?: string): Promise<{ id: string; name: string }> {
+  return fetchJson<{ id: string; name: string }>('/api/portfolio', {
+    method: 'POST',
+    body: JSON.stringify({ name, currency, description }),
+  });
+}
+
+export async function deletePortfolio(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/api/portfolio/${enc(id)}`, { method: 'DELETE' });
+}
+
+export async function addPortfolioTransaction(
+  portfolioId: string,
+  tx: {
+    type: 'BUY' | 'SELL' | 'CASH_DEPOSIT' | 'CASH_WITHDRAWAL' | 'DIVIDEND' | 'FEE';
+    symbol?: string | null;
+    quantity?: number;
+    price?: number;
+    fee?: number;
+    timestamp?: string;
+    notes?: string;
+  },
+) {
+  return fetchJson(`/api/portfolio/${enc(portfolioId)}/transactions`, {
+    method: 'POST',
+    body: JSON.stringify(tx),
+  });
+}
+
+export async function simulateRebalancing(
+  portfolioId: string,
+  targets: { symbol: string; targetWeight: number }[],
+): Promise<{ totalValue: number; actions: RebalanceAction[]; warnings: string[] }> {
+  return fetchJson(`/api/portfolio/${enc(portfolioId)}/rebalance`, {
+    method: 'POST',
+    body: JSON.stringify({ targets }),
+  });
+}
+
+export async function fetchInvestmentProfile(): Promise<UserProfileData> {
+  return fetchJson<UserProfileData>('/api/portfolio/profile');
+}
+
+export async function updateInvestmentProfile(profile: Partial<UserProfileData>): Promise<UserProfileData> {
+  return fetchJson<UserProfileData>('/api/portfolio/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
   });
 }

@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { askAi } from '@/lib/api';
 import { fmtPrice, fmtSigned, fmtSignedPct } from '@/lib/format';
 import { ArrowRightIcon, ChevronLeftIcon, PlusIcon, SparkIcon, XIcon } from './icons';
+import { ResearchReportCard } from './ResearchReportCard';
 import { btn, cx, useLang } from './ui';
 
 interface Props {
@@ -87,6 +88,8 @@ export function AskAiPanel({ open, onClose, symbol, quote }: Props) {
         role: 'assistant',
         content: res.answer,
         sources: res.sources,
+        report: res.report,
+        toolSteps: res.toolSteps,
         ts: Date.now(),
       };
       setMessages([...nextMessages, aiMsg]);
@@ -105,10 +108,11 @@ export function AskAiPanel({ open, onClose, symbol, quote }: Props) {
   };
 
   const suggestions: string[] = [
+    t('suggestions.valuation'),
+    t('suggestions.risk'),
+    t('suggestions.ratios'),
     t('suggestions.levels'),
     t('suggestions.guidance'),
-    t('suggestions.earnings', { symbol }),
-    t('suggestions.translate'),
   ];
 
   if (!open) return null;
@@ -126,7 +130,7 @@ export function AskAiPanel({ open, onClose, symbol, quote }: Props) {
       <aside
         className={cx(
           'flex h-full w-full flex-col border-border bg-panel shadow-2xl animate-in slide-in-from-right duration-200',
-          'lg:max-w-[460px] lg:border-l',
+          'lg:max-w-[540px] xl:max-w-[620px] lg:border-l',
         )}
       >
         {/* Header - Desktop & Mobile responsive */}
@@ -215,6 +219,26 @@ export function AskAiPanel({ open, onClose, symbol, quote }: Props) {
 
                     <div className="rounded-xl border border-border/80 bg-panel-2/50 p-4">
                       <MarkdownContent content={m.content} />
+
+                      {m.report && (
+                        <ResearchReportCard report={m.report} toolSteps={m.toolSteps} />
+                      )}
+
+                      {!m.report && m.toolSteps && m.toolSteps.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-border bg-panel/70 p-2.5 text-xs">
+                          <p className="font-mono text-[11px] text-muted flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                            <span>{m.toolSteps.length} tools executed:</span>
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {m.toolSteps.map((s, idx) => (
+                              <span key={idx} className="rounded bg-panel-2 px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                                {s.tool} ({s.durationMs}ms)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {m.sources && m.sources.length > 0 && (
                         <div className="mt-4 pt-3 border-t border-border/60">

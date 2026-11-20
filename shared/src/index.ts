@@ -415,12 +415,99 @@ export function isValidSymbol(s: string): boolean {
   return /^[A-Z0-9.\-^=]{1,15}$/.test(s);
 }
 
-// ---- Ask AI ----
+// ---- Ask AI & Investment Research Agent ----
 export interface AskSource {
   id: string;
   label: string;
-  type: 'news' | 'price' | 'levels' | 'guidance' | 'analyst' | 'general';
+  type: 'news' | 'price' | 'levels' | 'guidance' | 'analyst' | 'general' | 'tool' | 'valuation' | 'risk';
   url?: string;
+}
+
+export type InvestmentVerdictCategory =
+  | 'ATTRACTIVE_UNDER_ASSUMPTIONS'
+  | 'NEUTRAL'
+  | 'UNATTRACTIVE_UNDER_ASSUMPTIONS'
+  | 'INSUFFICIENT_DATA';
+
+export interface ValuationScenarioSummary {
+  scenario: 'bull' | 'base' | 'bear';
+  impliedFairValue: number | null;
+  upsideDownsidePercent: number | null;
+  keyAssumptions: string;
+}
+
+export interface InvestmentResearchReport {
+  symbol?: string;
+  title: string;
+  horizon: 'short' | 'medium' | 'long';
+  verdict: InvestmentVerdictCategory;
+  summary: string;
+
+  fundamentals?: {
+    revenueGrowthYoY?: number | null;
+    netMargin?: number | null;
+    fcfMargin?: number | null;
+    roe?: number | null;
+    roic?: number | null;
+    debtToEquity?: number | null;
+    keyTakeaway: string;
+  };
+
+  technicals?: {
+    currentPrice: number;
+    trend: 'bullish' | 'bearish' | 'neutral';
+    rsi14?: number | null;
+    rsiCondition?: 'overbought' | 'oversold' | 'neutral';
+    macdCondition?: string;
+    supportPrice?: number | null;
+    resistancePrice?: number | null;
+    keyTakeaway: string;
+  };
+
+  valuationScenarios?: {
+    currentPrice: number;
+    baseFairValue: number | null;
+    bull: ValuationScenarioSummary;
+    base: ValuationScenarioSummary;
+    bear: ValuationScenarioSummary;
+    keyTakeaway: string;
+  };
+
+  riskAssessment?: {
+    riskRating: 'low' | 'moderate' | 'high' | 'very_high';
+    beta?: number | null;
+    maxDrawdownPercent?: number | null;
+    historicalVaR95?: number | null;
+    downsideRisks: string[];
+    thesisInvalidation: string[];
+  };
+
+  comparisons?: {
+    peers: string[];
+    comparisonSummary: string;
+  };
+
+  portfolioConsiderations?: {
+    suitability: string;
+    suggestedAllocationWeight?: string;
+    rebalancingNotes?: string;
+  };
+
+  dataQuality: {
+    freshnessWarning?: string;
+    staleFeeds: string[];
+    sources: AskSource[];
+  };
+}
+
+export interface ToolExecutionStep {
+  tool: string;
+  args: Record<string, unknown>;
+  durationMs: number;
+  success: boolean;
+  summary: string;
+  error?: string;
+  evidenceSource?: AskSource;
 }
 
 export interface ChatMessage {
@@ -428,11 +515,13 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   sources?: AskSource[];
+  report?: InvestmentResearchReport | null;
+  toolSteps?: ToolExecutionStep[];
   ts: number;
 }
 
 export interface AskAiRequest {
-  symbol: string;
+  symbol?: string;
   question: string;
   lang: Lang;
   history?: { role: 'user' | 'assistant'; content: string }[];
@@ -441,7 +530,67 @@ export interface AskAiRequest {
 export interface AskAiResponse {
   answer: string;
   sources: AskSource[];
+  report?: InvestmentResearchReport | null;
+  toolSteps?: ToolExecutionStep[];
   model: string;
+  executionTimeMs?: number;
+}
+
+// ---- Portfolio Ledger Types ----
+export type TransactionType = 'BUY' | 'SELL' | 'CASH_DEPOSIT' | 'CASH_WITHDRAWAL' | 'DIVIDEND' | 'FEE';
+
+export interface PositionHolding {
+  symbol: string;
+  quantity: number;
+  averageCostBasis: number;
+  totalCost: number;
+  currentPrice: number | null;
+  currentValue: number | null;
+  unrealizedPnL: number | null;
+  unrealizedPnLPercent: number | null;
+  weight: number;
+}
+
+export interface PortfolioSummary {
+  id: string;
+  userId: string;
+  name: string;
+  currency: string;
+  description?: string | null;
+  cashBalance: number;
+  investedValue: number;
+  totalValue: number;
+  totalCostBasis: number;
+  totalUnrealizedPnL: number;
+  totalUnrealizedPnLPercent: number;
+  totalRealizedPnL: number;
+  netDepositedCash: number;
+  totalReturnPercent: number | null;
+  holdings: PositionHolding[];
+  concentration: {
+    hhi: number;
+    maxPositionWeight: number;
+    top3Concentration: number;
+    level: 'low' | 'moderate' | 'high';
+  };
+  warnings: string[];
+}
+
+export interface RebalanceAction {
+  symbol: string;
+  currentWeight: number;
+  targetWeight: number;
+  action: 'BUY' | 'SELL' | 'HOLD';
+  targetValue: number;
+  diffValue: number;
+  estimatedQuantityChange: number | null;
+}
+
+export interface UserProfileData {
+  horizon: 'short' | 'medium' | 'long';
+  riskTolerance: 'conservative' | 'moderate' | 'aggressive';
+  liquidityNeeds: 'low' | 'medium' | 'high';
+  lossCapacity: 'low' | 'moderate' | 'high';
 }
 
 export * from './market-hours';

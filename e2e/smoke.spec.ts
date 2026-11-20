@@ -6,6 +6,8 @@ import { expect, test, type Page } from '@playwright/test';
  */
 
 const isPhone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 1024;
+const API_PORT = process.env.PW_API_PORT ?? '4900';
+const API = process.env.PW_API_URL ? `${process.env.PW_API_URL.replace(/\/$/, '')}/api` : `http://localhost:${API_PORT}/api`;
 
 async function open(page: Page, symbol = 'AAPL') {
   await page.goto(`/stock/${symbol}`);
@@ -203,8 +205,8 @@ test.describe('alerts', () => {
     for (const [kind, offset] of [['price_above', 0.02], ['price_below', -0.02]] as const) {
       let status = 0;
       for (let attempt = 0; attempt < 6 && status !== 201; attempt++) {
-        const q = await (await request.get('http://localhost:4100/api/quote/AAPL')).json();
-        const r = await request.post('http://localhost:4100/api/alerts', { data: { symbol: 'AAPL', kind, targetPrice: +(q.price + offset * (attempt + 1)).toFixed(2) } });
+        const q = await (await request.get(`${API}/quote/AAPL`)).json();
+        const r = await request.post(`${API}/alerts`, { data: { symbol: 'AAPL', kind, targetPrice: +(q.price + offset * (attempt + 1)).toFixed(2) } });
         status = r.status();
         if (status !== 201) await page.waitForTimeout(1000);
       }
@@ -212,12 +214,12 @@ test.describe('alerts', () => {
     }
     await expect(page.getByRole('status').filter({ hasText: 'AAPL alert' })).toBeVisible({ timeout: 45_000 });
     // clean up for the next tests
-    for (const a of await (await request.get('http://localhost:4100/api/alerts')).json()) await request.delete(`http://localhost:4100/api/alerts/${a.id}`);
+    for (const a of await (await request.get(`${API}/alerts`)).json()) await request.delete(`${API}/alerts/${a.id}`);
   });
 
   test('rejects a target on the wrong side of the price', async ({ request }) => {
-    const q = await (await request.get('http://localhost:4100/api/quote/AAPL')).json();
-    const r = await request.post('http://localhost:4100/api/alerts', { data: { symbol: 'AAPL', kind: 'price_above', targetPrice: +(q.price * 0.5).toFixed(2) } });
+    const q = await (await request.get(`${API}/quote/AAPL`)).json();
+    const r = await request.post(`${API}/alerts`, { data: { symbol: 'AAPL', kind: 'price_above', targetPrice: +(q.price * 0.5).toFixed(2) } });
     expect(r.status()).toBe(400);
   });
 });
@@ -250,7 +252,6 @@ test.describe('installable app', () => {
 });
 
 // ------------------------------------------------------------------ Phase 8: watchlist upgrades
-const API = 'http://localhost:4100/api';
 const SHOTS = process.env.SHOTS; // optional folder for screenshots
 
 const watchlist = (page: Page) => page.locator('section[aria-labelledby="watchlist-title"]').filter({ visible: true });

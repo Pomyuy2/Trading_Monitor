@@ -21,6 +21,9 @@ import { PrismaWatchlistStore } from './store/watchlist-store.js';
 import { PushService } from './push/push-service.js';
 import { UserService } from './auth/user-service.js';
 import { getAuthUserFromCookie } from './auth/session.js';
+import { PortfolioService } from './portfolio/portfolio-service.js';
+import { InvestmentResearchAgent } from './agent/research-agent.js';
+import type { AgentContext } from './agent/types.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -61,6 +64,11 @@ const push = new PushService(db, env.VAPID_SUBJECT, log);
 await push.init();
 const users = new UserService(db, process.env, log);
 await users.init();
+const portfolio = new PortfolioService(db);
+const researchAgent =
+  env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log)
+    : null;
 const defaultAdminId = await users.getDefaultUserId();
 await watchlist.init(defaultAdminId);
 
@@ -281,7 +289,7 @@ app.get('/api/diagnostics/providers', async () => {
 });
 
 const askBodySchema = z.object({
-  symbol: z.string().min(1).max(15),
+  symbol: z.string().min(1).max(15).optional(),
   question: z.string().min(1).max(1000),
   lang: z.enum(['en', 'th']).optional().default('en'),
   history: z
@@ -299,9 +307,112 @@ app.post('/api/ai/ask', async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ error: 'Invalid request body' });
   }
-  const s = parseSymbol(parsed.data.symbol, reply);
-  if (!s) return;
-  return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
+
+  let s: string | null = null;
+  if (parsed.data.symbol) {
+    s = parseSymbol(parsed.data.symbol, reply);
+    if (!s) return;
+  }
+
+  const uid = await resolveUserId(req);
+  const ctx: AgentContext = {
+    userId: uid,
+    lang: parsed.data.lang,
+    market,
+    portfolio,
+  };
+
+  if (process.env.DEMO_MODE === 'true' && s) {
+    const sym = s;
+    const isThai = parsed.data.lang === 'th';
+    return {
+      answer: isThai
+        ? `รายงานวิเคราะห์เชิงปริมาณสำหรับ ${sym}: มูลค่าทางบัญชีและผลตอบแทนอยู่ในเกณฑ์ดี แนวโน้มทางเทคนิคเป็นบวก`
+        : `Quantitative research report for ${sym}: Valuation DCF scenarios indicate attractive upside under base assumptions with strong technical momentum.`,
+      sources: [
+        { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
+        { id: `val-${sym}`, label: `${sym} Valuation (Base Fair Value: $195.00)`, type: 'general' },
+        { id: `tech-${sym}`, label: `${sym} Technicals (RSI 58.2, Trend: bullish)`, type: 'levels' },
+      ],
+      model: 'demo-research-v1',
+      executionTimeMs: 120,
+      toolSteps: [
+        { tool: 'get_quote', args: { symbol: sym }, durationMs: 15, success: true, summary: `Loaded ${sym} quote` },
+        { tool: 'calculate_indicators', args: { symbol: sym }, durationMs: 25, success: true, summary: 'Calculated technical indicators' },
+        { tool: 'calculate_valuation', args: { symbol: sym }, durationMs: 30, success: true, summary: 'Calculated 3-scenario DCF' },
+        { tool: 'analyze_stock_risk', args: { symbol: sym }, durationMs: 20, success: true, summary: 'Calculated VaR and Beta' },
+      ],
+      report: {
+        symbol: sym,
+        title: `${sym} Investment Research Report`,
+        horizon: 'medium',
+        verdict: 'ATTRACTIVE_UNDER_ASSUMPTIONS',
+        summary: `Demonstrates resilient operating margins and solid free cash flow generation. Current price offers favorable risk/reward profile relative to intrinsic value.`,
+        valuationScenarios: {
+          currentPrice: 180.25,
+          baseFairValue: 195.0,
+          bull: { scenario: 'bull', impliedFairValue: 245.0, upsideDownsidePercent: 36.1, keyAssumptions: '15% FCF growth, 8% WACC' },
+          base: { scenario: 'base', impliedFairValue: 195.0, upsideDownsidePercent: 18.2, keyAssumptions: '10% FCF growth, 9% WACC' },
+          bear: { scenario: 'bear', impliedFairValue: 140.0, upsideDownsidePercent: -15.5, keyAssumptions: '5% FCF growth, 10.5% WACC' },
+          keyTakeaway: 'Current market price provides attractive margin of safety relative to base case intrinsic value.',
+        },
+        fundamentals: {
+          revenueGrowthYoY: 0.145,
+          netMargin: 0.238,
+          fcfMargin: 0.215,
+          roe: 0.485,
+          roic: 0.321,
+          debtToEquity: 1.15,
+          keyTakeaway: 'High return on capital and expanding operating leverage.',
+        },
+        technicals: {
+          currentPrice: 180.25,
+          trend: 'bullish',
+          rsi14: 58.2,
+          supportPrice: 165.0,
+          resistancePrice: 195.0,
+          keyTakeaway: 'Trading comfortably above 50-day and 200-day moving averages with healthy momentum.',
+        },
+        riskAssessment: {
+          riskRating: 'moderate',
+          downsideRisks: ['Macro slowdown impacting enterprise spend', 'Regulatory scrutiny in core markets'],
+          thesisInvalidation: [
+            'Daily close below 200-day moving average ($160.00)',
+            'Operating margin compression below 22% for two consecutive quarters',
+          ],
+        },
+        portfolioConsiderations: {
+          suitability: 'Suitable for moderate-to-aggressive growth portfolios seeking core exposure.',
+        },
+        dataQuality: {
+          staleFeeds: [],
+          sources: [
+            { id: `quote-${sym}`, label: `${sym} Quote · MockProvider`, type: 'price' },
+          ],
+        },
+      },
+    };
+  }
+
+  if (researchAgent) {
+    try {
+      const result = await researchAgent.research(
+        parsed.data.question.trim(),
+        s ?? undefined,
+        parsed.data.lang,
+        ctx,
+        parsed.data.history,
+      );
+      return result;
+    } catch (err) {
+      app.log.warn(`Research agent failed, falling back to askStock: ${(err as Error).message}`);
+    }
+  }
+
+  if (s) {
+    return market.askStock(s, parsed.data.question.trim(), parsed.data.lang, parsed.data.history);
+  }
+  return reply.code(400).send({ error: 'AI Assistant requires symbol or active agent' });
 });
 
 app.get('/api/watchlist', async (req) => {
@@ -415,6 +526,131 @@ app.post('/api/push/unsubscribe', async (req, reply) => {
   if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' });
   await push.unsubscribe(parsed.data.endpoint);
   return { ok: true };
+});
+
+// ---------- Portfolio Ledger ----------
+app.get('/api/portfolio', async (req) => {
+  const uid = await resolveUserId(req);
+  return portfolio.listPortfolios(uid);
+});
+
+app.post('/api/portfolio', async (req, reply) => {
+  const parsed = z
+    .object({
+      name: z.string().min(1).max(100),
+      currency: z.string().max(10).optional().default('USD'),
+      description: z.string().max(500).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid portfolio input' });
+  const uid = await resolveUserId(req);
+  const created = await portfolio.createPortfolio(uid, parsed.data.name, parsed.data.currency, parsed.data.description);
+  return reply.code(201).send(created);
+});
+
+app.delete<{ Params: { id: string } }>('/api/portfolio/:id', async (req, reply) => {
+  const uid = await resolveUserId(req);
+  const ok = await portfolio.deletePortfolio(uid, req.params.id);
+  return ok ? { ok: true } : reply.code(404).send({ error: 'Portfolio not found' });
+});
+
+app.get<{ Params: { id: string } }>('/api/portfolio/:id', async (req, reply) => {
+  const uid = await resolveUserId(req);
+  try {
+    const priceLookup = async (sym: string) => {
+      const q = await market.quote(sym).catch(() => null);
+      return q?.price ?? null;
+    };
+    return await portfolio.getPortfolioSummary(uid, req.params.id, priceLookup);
+  } catch (err) {
+    return reply.code(404).send({ error: (err as Error).message });
+  }
+});
+
+app.get<{ Params: { id: string } }>('/api/portfolio/:id/transactions', async (req, reply) => {
+  const uid = await resolveUserId(req);
+  try {
+    return await portfolio.getTransactions(uid, req.params.id);
+  } catch (err) {
+    return reply.code(404).send({ error: (err as Error).message });
+  }
+});
+
+const txBodySchema = z.object({
+  type: z.enum(['BUY', 'SELL', 'CASH_DEPOSIT', 'CASH_WITHDRAWAL', 'DIVIDEND', 'FEE']),
+  symbol: z.string().max(15).optional().nullable(),
+  quantity: z.number().nonnegative().optional(),
+  price: z.number().nonnegative().optional(),
+  fee: z.number().nonnegative().optional(),
+  timestamp: z.string().optional(),
+  notes: z.string().max(500).optional(),
+});
+
+app.post<{ Params: { id: string } }>('/api/portfolio/:id/transactions', async (req, reply) => {
+  const parsed = txBodySchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid transaction input' });
+  const uid = await resolveUserId(req);
+  try {
+    const tx = await portfolio.addTransaction(uid, {
+      portfolioId: req.params.id,
+      ...parsed.data,
+      symbol: parsed.data.symbol ? normalizeSymbol(parsed.data.symbol) : null,
+    });
+    return reply.code(201).send(tx);
+  } catch (err) {
+    return reply.code(400).send({ error: (err as Error).message });
+  }
+});
+
+const rebalanceBodySchema = z.object({
+  targets: z
+    .array(
+      z.object({
+        symbol: z.string().min(1).max(15),
+        targetWeight: z.number().min(0).max(1),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+app.post<{ Params: { id: string } }>('/api/portfolio/:id/rebalance', async (req, reply) => {
+  const parsed = rebalanceBodySchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid rebalance targets' });
+  const uid = await resolveUserId(req);
+  try {
+    const priceLookup = async (sym: string) => {
+      const q = await market.quote(sym).catch(() => null);
+      return q?.price ?? null;
+    };
+    return await portfolio.simulateRebalancing(
+      uid,
+      req.params.id,
+      parsed.data.targets.map((t) => ({ ...t, symbol: normalizeSymbol(t.symbol) })),
+      priceLookup,
+    );
+  } catch (err) {
+    return reply.code(400).send({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/portfolio/profile', async (req) => {
+  const uid = await resolveUserId(req);
+  return portfolio.getInvestmentProfile(uid);
+});
+
+app.put('/api/portfolio/profile', async (req, reply) => {
+  const parsed = z
+    .object({
+      horizon: z.enum(['short', 'medium', 'long']).optional(),
+      riskTolerance: z.enum(['conservative', 'moderate', 'aggressive']).optional(),
+      liquidityNeeds: z.enum(['low', 'medium', 'high']).optional(),
+      lossCapacity: z.enum(['low', 'moderate', 'high']).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid profile data' });
+  const uid = await resolveUserId(req);
+  return portfolio.updateInvestmentProfile(uid, parsed.data);
 });
 
 // ---------- WebSocket ----------

@@ -362,6 +362,9 @@
     "back": "Back",
     "tryAsking": "Try asking",
     "suggestions": {
+      "valuation": "Run DCF valuation & scenario analysis",
+      "risk": "Analyze downside risk and VaR",
+      "ratios": "Calculate fundamental health & margins",
       "levels": "What are the key levels to watch?",
       "guidance": "What did the company guide for next year?",
       "earnings": "When is the next earnings date?",

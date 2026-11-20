@@ -80,16 +80,18 @@ model PushSubscription {
 }
 
 model User {
-  id                String             @id @default(cuid())
+  id                String                 @id @default(cuid())
   email             String
-  emailHash         String?            @unique
+  emailHash         String?                @unique
   name              String?
   passwordHash      String
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
   watchlist         WatchlistItem[]
   alerts            Alert[]
   pushSubscriptions PushSubscription[]
+  portfolios        Portfolio[]
+  investmentProfile UserInvestmentProfile?
 }
 
 /// Rate limiting for invalid invite codes during sign-up (max 5 attempts in 5 hours).
@@ -120,4 +122,54 @@ model QuotaLedger {
 
   @@unique([provider, endpoint])
   @@index([provider])
+}
+
+/// User-scoped Investment Portfolios.
+model Portfolio {
+  id           String                 @id @default(cuid())
+  userId       String                 @default("default-user")
+  name         String
+  currency     String                 @default("USD")
+  description  String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions PortfolioTransaction[]
+
+  @@index([userId])
+}
+
+/// Transaction ledger: BUY, SELL, CASH_DEPOSIT, CASH_WITHDRAWAL, DIVIDEND, FEE.
+/// Transactions are the source of truth for all position, P&L, and balance calculations.
+model PortfolioTransaction {
+  id          String    @id @default(cuid())
+  portfolioId String
+  symbol      String?   // null for cash deposit / withdrawal
+  type        String    // BUY | SELL | CASH_DEPOSIT | CASH_WITHDRAWAL | DIVIDEND | FEE
+  quantity    Float     @default(0)
+  price       Float     @default(0) // execution price per share or transaction cash amount
+  fee         Float     @default(0)
+  timestamp   DateTime  @default(now())
+  notes       String?
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, timestamp])
+  @@index([portfolioId, symbol])
+}
+
+/// Optional explicit user investment profile for personalized suitability assessments.
+model UserInvestmentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  horizon        String   @default("medium") // short | medium | long
+  riskTolerance  String   @default("moderate") // conservative | moderate | aggressive
+  liquidityNeeds String   @default("medium") // low | medium | high
+  lossCapacity   String   @default("moderate") // low | moderate | high
+  updatedAt      DateTime @updatedAt
+
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
