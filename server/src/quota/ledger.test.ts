@@ -160,4 +160,17 @@ describe('Persistent Quota Ledger & Circuit Breaker', () => {
     expect(diag?.accountingMode).toBe('authoritative');
     expect(diag?.authoritativeRemaining).toBe(42);
   });
+
+  it('resets Tiingo daily quota at midnight EST (UTC-5)', () => {
+    const ledger = new QuotaLedgerService();
+    // Nov 20, 2026, 03:00 UTC (10:00 PM EST Nov 19)
+    const testNow = Date.UTC(2026, 10, 20, 3, 0, 0);
+    const diag = ledger.getDiagnostics(testNow).find((d) => d.provider === 'tiingo');
+    expect(diag).toBeDefined();
+
+    // Start should be Nov 19, 05:00 UTC (midnight EST Nov 19)
+    expect(new Date(diag!.windowStart).toISOString()).toBe('2026-11-19T05:00:00.000Z');
+    // End should be Nov 20, 05:00 UTC (midnight EST Nov 20)
+    expect(new Date(diag!.windowEnd).toISOString()).toBe('2026-11-20T05:00:00.000Z');
+  });
 });

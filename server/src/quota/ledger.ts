@@ -7,7 +7,8 @@ export interface ProviderQuotaPolicy {
   requestsPerDay?: number;
   requestsPerMonth?: number;
   windowType: 'fixed' | 'rolling';
-  dayResetUtc: boolean;
+  dayResetUtc?: boolean;
+  dayResetEst?: boolean;
 }
 
 export const PROVIDER_QUOTA_POLICIES: Record<string, ProviderQuotaPolicy> = {
@@ -41,7 +42,7 @@ export const PROVIDER_QUOTA_POLICIES: Record<string, ProviderQuotaPolicy> = {
     requestsPerHour: 50,
     requestsPerDay: 1000,
     windowType: 'fixed',
-    dayResetUtc: true,
+    dayResetEst: true,
   },
   sec: {
     provider: 'sec',
@@ -97,6 +98,13 @@ interface InMemoryCounter {
 }
 
 function calculateWindow(policy?: ProviderQuotaPolicy, now = Date.now()): { start: number; end: number } {
+  if (policy?.dayResetEst) {
+    const estOffsetMs = 5 * 3600_000;
+    const d = new Date(now - estOffsetMs);
+    const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0) + estOffsetMs;
+    const end = start + 86400_000;
+    return { start, end };
+  }
   if (policy?.dayResetUtc) {
     const d = new Date(now);
     const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0);
@@ -171,10 +179,9 @@ export class QuotaLedgerService {
     }
   }
 
-  private getOrCreate(provider: string, endpoint = 'default'): InMemoryCounter {
+  private getOrCreate(provider: string, endpoint = 'default', now = Date.now()): InMemoryCounter {
     const k = this.key(provider, endpoint);
     let c = this.counters.get(k);
-    const now = Date.now();
     const policy = PROVIDER_QUOTA_POLICIES[provider.toLowerCase()];
 
     if (!c) {
@@ -412,7 +419,7 @@ export class QuotaLedgerService {
   /**
    * Diagnostics dump of all known providers.
    */
-  getDiagnostics(): QuotaStatus[] {
+  getDiagnostics(now = Date.now()): QuotaStatus[] {
     const list: QuotaStatus[] = [];
     const allProviders = [
       ...new Set([
@@ -422,7 +429,7 @@ export class QuotaLedgerService {
     ];
 
     for (const p of allProviders) {
-      const c = this.getOrCreate(p, 'default');
+      const c = this.getOrCreate(p, 'default', now);
       const policy = PROVIDER_QUOTA_POLICIES[p];
       list.push({
         provider: c.provider,
