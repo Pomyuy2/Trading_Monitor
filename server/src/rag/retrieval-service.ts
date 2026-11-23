@@ -1,13 +1,16 @@
 import { db } from '../store/db.js';
+import { coverageService } from './coverage-service.js';
+import { jobCoordinator } from './job-coordinator.js';
 
 export interface SearchOptions {
   query: string;
   symbol: string;
-  form?: string | string[]; // '10-K' | '10-Q'
+  form?: string | string[]; // '10-K' | '10-Q' | '8-K'
   sectionCode?: string | string[];
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD (historical cutoff - strictly no lookahead)
   limit?: number; // default 5, max 20
+  autoIngest?: boolean; // default true
 }
 
 export interface RetrievalChunk {
@@ -28,12 +31,13 @@ export interface RetrievalChunk {
 
 export interface GetSectionOptions {
   symbol: string;
-  form?: string; // '10-K' | '10-Q'
+  form?: string; // '10-K' | '10-Q' | '8-K'
   sectionCode: string; // 'ITEM_1', 'ITEM_1A', 'ITEM_7', 'ITEM_8', etc.
   filingDate?: string; // exact filing date
   asOfDate?: string; // latest filing date on or before asOfDate
   offsetChars?: number;
   limitChars?: number;
+  autoIngest?: boolean; // default true
 }
 
 export interface GetSectionResult {
@@ -98,6 +102,27 @@ export class DocumentRetrievalService {
   async search(options: SearchOptions): Promise<RetrievalChunk[]> {
     const symbol = options.symbol.toUpperCase();
     const limit = Math.max(1, Math.min(20, options.limit ?? 5));
+    const autoIngest = options.autoIngest ?? true;
+
+    if (autoIngest) {
+      try {
+        const coverage = await coverageService.checkCoverage(symbol, {
+          form: typeof options.form === 'string' ? options.form : undefined,
+          endDate: options.endDate,
+        });
+
+        if (coverage.status === 'MISSING' || coverage.status === 'STALE') {
+          const jobPromise = jobCoordinator.enqueueOrJoin(symbol, {
+            form: typeof options.form === 'string' ? options.form : undefined,
+            endDate: options.endDate,
+          });
+          await jobCoordinator.waitForJob(jobPromise, 12_000);
+        }
+      } catch (err: any) {
+        console.warn(`[DocumentRetrievalService] Auto-ingest check warning for ${symbol}: ${err.message}`);
+      }
+    }
+
     const { andQuery, orQuery } = sanitizeFts5Query(options.query);
 
     if (!andQuery) return [];
@@ -208,6 +233,26 @@ export class DocumentRetrievalService {
     const sectionCode = options.sectionCode.toUpperCase();
     const offset = Math.max(0, options.offsetChars ?? 0);
     const limit = Math.max(500, Math.min(12000, options.limitChars ?? 8000));
+    const autoIngest = options.autoIngest ?? true;
+
+    if (autoIngest) {
+      try {
+        const coverage = await coverageService.checkCoverage(symbol, {
+          form: options.form,
+          endDate: options.asOfDate ?? options.filingDate,
+        });
+
+        if (coverage.status === 'MISSING' || coverage.status === 'STALE') {
+          const jobPromise = jobCoordinator.enqueueOrJoin(symbol, {
+            form: options.form,
+            endDate: options.asOfDate ?? options.filingDate,
+          });
+          await jobCoordinator.waitForJob(jobPromise, 12_000);
+        }
+      } catch (err: any) {
+        console.warn(`[DocumentRetrievalService] Auto-ingest check warning for ${symbol}: ${err.message}`);
+      }
+    }
 
     // Find the matching document first
     const docWhere: any = { symbol };

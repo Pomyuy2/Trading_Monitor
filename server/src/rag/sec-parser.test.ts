@@ -88,4 +88,35 @@ There have been no material changes from the risk factors disclosed in Form 10-K
     const qMda = sections.find((s) => s.sectionCode === 'PART_I_ITEM_2');
     expect(qMda?.content).toContain('Revenue for the quarterly period grew 15%');
   });
+
+  it('correctly segments Form 8-K current reports with Item 2.02 and Item 7.01', () => {
+    const documentText = `
+UNITED STATES SECURITIES AND EXCHANGE COMMISSION
+Washington, D.C. 20549
+FORM 8-K
+CURRENT REPORT
+
+Item 2.02 Results of Operations and Financial Condition
+On May 22, 2024, NVIDIA Corporation issued a press release announcing its financial results for the first quarter of fiscal 2025.
+Revenue for the quarter was $26.0 billion, up 262% from a year ago.
+
+Item 7.01 Regulation FD Disclosure
+NVIDIA management will host a conference call discussing first quarter financial performance and future expectations.
+
+Item 9.01 Financial Statements and Exhibits
+(d) Exhibits: Press Release dated May 22, 2024.
+    `.trim();
+
+    const sections = parseSecSections(documentText, '8-K');
+    expect(sections.length).toBeGreaterThanOrEqual(3);
+
+    const secCodes = sections.map((s) => s.sectionCode);
+    expect(secCodes).toContain('ITEM_2.02');
+    expect(secCodes).toContain('ITEM_7.01');
+    expect(secCodes).toContain('ITEM_9.01');
+
+    const item202 = sections.find((s) => s.sectionCode === 'ITEM_2.02');
+    expect(item202?.content).toContain('Revenue for the quarter was $26.0 billion');
+    expect(item202?.content).not.toContain('Regulation FD Disclosure');
+  });
 });

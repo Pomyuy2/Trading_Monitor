@@ -23,13 +23,13 @@ export class SecClient {
   readonly userAgent: string;
   readonly cacheDir: string;
   private minIntervalMs: number;
-  private lastRequestTime = 0;
+  private static globalLastRequestTime = 0;
 
   constructor(options: SecClientOptions = {}) {
     this.userAgent = options.userAgent ?? 'TradingMonitor Research/2.0 (contact: admin@jarengjar.com)';
     const baseDir = process.cwd().endsWith('server') ? process.cwd() : path.resolve(process.cwd(), 'server');
     this.cacheDir = options.cacheDir ?? path.resolve(baseDir, 'data', 'sec_filings_cache');
-    this.minIntervalMs = options.minIntervalMs ?? 200; // max 5 req/sec
+    this.minIntervalMs = options.minIntervalMs ?? 200; // max 5 req/sec (well within SEC 10 req/s limit)
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
     }
@@ -37,16 +37,32 @@ export class SecClient {
 
   private async throttle(): Promise<void> {
     const now = Date.now();
-    const elapsed = now - this.lastRequestTime;
+    const elapsed = now - SecClient.globalLastRequestTime;
     if (elapsed < this.minIntervalMs) {
       await new Promise((resolve) => setTimeout(resolve, this.minIntervalMs - elapsed));
     }
-    this.lastRequestTime = Date.now();
+    SecClient.globalLastRequestTime = Date.now();
   }
 
-  async fetchWithCache(url: string, cachePath: string, accept = 'text/html,application/xhtml+xml,application/json'): Promise<string> {
+  async fetchWithCache(
+    url: string,
+    cachePath: string,
+    accept = 'text/html,application/xhtml+xml,application/json',
+    maxAgeMs?: number,
+  ): Promise<string> {
     if (fs.existsSync(cachePath)) {
-      return fs.readFileSync(cachePath, 'utf8');
+      if (maxAgeMs !== undefined) {
+        try {
+          const stats = fs.statSync(cachePath);
+          if (Date.now() - stats.mtimeMs < maxAgeMs) {
+            return fs.readFileSync(cachePath, 'utf8');
+          }
+        } catch {
+          // Fall through to network fetch if stat fails
+        }
+      } else {
+        return fs.readFileSync(cachePath, 'utf8');
+      }
     }
 
     await this.throttle();
@@ -93,11 +109,11 @@ export class SecClient {
     throw new Error(`Failed to fetch ${url} after retries`);
   }
 
-  async getCompanySubmissions(cik: string): Promise<any> {
+  async getCompanySubmissions(cik: string, maxAgeMs = 24 * 60 * 60 * 1000): Promise<any> {
     const paddedCik = cik.replace(/^0+/, '').padStart(10, '0');
     const url = `https://data.sec.gov/submissions/CIK${paddedCik}.json`;
     const cachePath = path.join(this.cacheDir, 'submissions', `CIK${paddedCik}.json`);
-    const jsonStr = await this.fetchWithCache(url, cachePath, 'application/json');
+    const jsonStr = await this.fetchWithCache(url, cachePath, 'application/json', maxAgeMs);
     return JSON.parse(jsonStr);
   }
 
@@ -110,3 +126,6 @@ export class SecClient {
     return { text, cachePath, url };
   }
 }
+
+export const secClient = new SecClient();
+

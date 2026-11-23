@@ -11,9 +11,14 @@ export function cleanSecHtml(html: string): string {
   return htmlToText(html);
 }
 
-function extractItemCode(line: string, isPart2: boolean, is10Q: boolean): { code: string; title: string } | null {
+function extractItemCode(
+  line: string,
+  isPart2: boolean,
+  is10Q: boolean,
+  is8K: boolean
+): { code: string; title: string } | null {
   const clean = line.replace(/\s+/g, ' ').trim();
-  const match = clean.match(/^item\s+([0-9]+[a-z]?)\b[\.:\-]?\s*(.*)$/i);
+  const match = clean.match(/^item\s+([0-9]+(?:\.[0-9]+)?[a-z]?)\b[\.:\-]?\s*(.*)$/i);
   if (!match) return null;
 
   const rawItemNum = match[1].toUpperCase();
@@ -22,6 +27,13 @@ function extractItemCode(line: string, isPart2: boolean, is10Q: boolean): { code
   // If the line is just a reference like "Item 1 of this report" or "Item 1A in our", ignore
   if (/^(?:of|in|for|and|to|we|our|under)\b/i.test(rawTitle)) {
     return null;
+  }
+
+  if (is8K) {
+    return {
+      code: `ITEM_${rawItemNum}`,
+      title: clean,
+    };
   }
 
   // Must have some descriptive text unless it's followed by a known section title
@@ -43,10 +55,15 @@ function extractItemCode(line: string, isPart2: boolean, is10Q: boolean): { code
   };
 }
 
-export function parseSecSections(htmlOrText: string, form: '10-K' | '10-Q'): ParsedSection[] {
+export function parseSecSections(
+  htmlOrText: string,
+  form: '10-K' | '10-Q' | '8-K' | '10-K/A' | '10-Q/A' | string
+): ParsedSection[] {
   const text = htmlOrText.includes('<') ? cleanSecHtml(htmlOrText) : htmlOrText;
   const lines = text.split('\n');
-  const is10Q = form === '10-Q';
+  const upperForm = (form || '').toUpperCase();
+  const is10Q = upperForm.includes('10-Q');
+  const is8K = upperForm.includes('8-K');
 
   interface SectionMarker {
     code: string;
@@ -69,10 +86,12 @@ export function parseSecSections(htmlOrText: string, form: '10-K' | '10-Q'): Par
       isPart2 = false;
     }
 
-    // Filter candidate heading lines:
-    // "Item X. Title" or "Item X - Title"
-    if (/^item\s+(?:1a|1c|1|2|3|4|5|6|7a|7|8|9a|9b|9c|10|11|12|13|14|15)\b[^\n\r]*[a-zA-Z]{3,}/i.test(rawLine)) {
-      const itemInfo = extractItemCode(rawLine, isPart2, is10Q);
+    const isCandidateHeading = is8K
+      ? /^item\s+[0-9]+(?:\.[0-9]+)?\b[^\n\r]*/i.test(rawLine)
+      : /^item\s+(?:1a|1c|1|2|3|4|5|6|7a|7|8|9a|9b|9c|10|11|12|13|14|15)\b[^\n\r]*[a-zA-Z]{3,}/i.test(rawLine);
+
+    if (isCandidateHeading) {
+      const itemInfo = extractItemCode(rawLine, isPart2, is10Q, is8K);
       if (itemInfo) {
         markers.push({
           code: itemInfo.code,

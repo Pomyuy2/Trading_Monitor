@@ -261,3 +261,27 @@ model DocumentChunk {
   @@index([symbol, form, filingDateStr])
   @@index([symbol, sectionCode])
 }
+
+/// Durable SEC Ingestion Job tracking across restarts
+model IngestionJob {
+  id                String    @id @default(cuid())
+  symbol            String
+  cik               String
+  accessionNumber   String?
+  form              String?
+  status            String    @default("QUEUED") // QUEUED | RUNNING | INDEXING | READY | FAILED | RETRYABLE | UNAVAILABLE
+  error             String?
+  retryCount        Int       @default(0)
+  maxRetries        Int       @default(3)
+  documentsIngested Int       @default(0)
+  chunksCreated     Int       @default(0)
+  userId            String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([symbol, status])
+  @@index([cik, status])
+  @@index([status])
+}

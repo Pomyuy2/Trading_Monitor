@@ -3,12 +3,15 @@ import { db } from '../store/db.js';
 import { SecClient, type SecFilingMeta } from './sec-client.js';
 import { parseSecSections, type ParsedSection } from './sec-parser.js';
 import { chunkSection, type GeneratedChunk } from './chunker.js';
+import { secCikService, SecCikService } from './sec-cik-service.js';
 
 export interface IngestionOptions {
-  symbols?: string[]; // default ['NVDA', 'AAPL', 'MSFT']
+  symbols?: string[]; // e.g. ['NVDA', 'AAPL', 'MSFT', 'TSLA']
   force?: boolean;
-  max10KPerSymbol?: number; // default 3 (e.g. FY26, FY25, FY24)
-  max10QPerSymbol?: number; // default 4
+  max10KPerSymbol?: number; // default 2
+  max10QPerSymbol?: number; // default 3
+  max8KPerSymbol?: number; // default 2
+  endDate?: string; // YYYY-MM-DD
   onProgress?: (msg: string) => void;
 }
 
@@ -20,33 +23,42 @@ export interface IngestionStats {
   errors: { symbol: string; form: string; date: string; error: string }[];
 }
 
-const CIK_MAP: Record<string, string> = {
-  NVDA: '0001045810',
-  AAPL: '0000320193',
-  MSFT: '0000789019',
-};
-
 export class SecIngestionPipeline {
   private client: SecClient;
+  private cikService: SecCikService;
 
-  constructor(client?: SecClient) {
+  constructor(client?: SecClient, cikService?: SecCikService) {
     this.client = client ?? new SecClient();
+    this.cikService = cikService ?? secCikService;
   }
 
   async discoverTargetFilings(
     symbol: string,
-    max10K = 3,
-    max10Q = 4,
+    max10K = 2,
+    max10Q = 3,
+    max8K = 2,
+    endDate?: string,
   ): Promise<SecFilingMeta[]> {
-    const cik = CIK_MAP[symbol.toUpperCase()];
-    if (!cik) throw new Error(`Unknown CIK for symbol ${symbol}`);
+    const sym = symbol.toUpperCase().trim();
+    const resolved = await this.cikService.resolveTicker(sym);
+    if (!resolved) {
+      throw new Error(`Symbol ${sym} is not a supported SEC-reporting public company.`);
+    }
 
+    const cik = resolved.cik;
     const sub = await this.client.getCompanySubmissions(cik);
-    const r = sub.filings.recent;
-    const companyName = sub.name ?? symbol;
+    const r = sub.filings?.recent;
+    if (!r || !r.form) {
+      return [];
+    }
+
+    const companyName = sub.name ?? resolved.companyName ?? sym;
 
     const tenKs: SecFilingMeta[] = [];
     const tenQs: SecFilingMeta[] = [];
+    const eightKs: SecFilingMeta[] = [];
+
+    const numericCik = cik.replace(/^0+/, '');
 
     for (let i = 0; i < r.form.length; i++) {
       const form = r.form[i];
@@ -55,40 +67,45 @@ export class SecIngestionPipeline {
       const accessionNumber = r.accessionNumber[i];
       const primaryDoc = r.primaryDocument[i];
 
-      if (form === '10-K' && tenKs.length < max10K) {
-        const numericCik = cik.replace(/^0+/, '');
-        const accNoHyphen = accessionNumber.replace(/-/g, '');
-        tenKs.push({
-          symbol: symbol.toUpperCase(),
-          cik,
-          companyName,
-          form: '10-K',
-          filingDate,
-          reportDate,
-          accessionNumber,
-          primaryDoc,
-          sourceUrl: `https://www.sec.gov/Archives/edgar/data/${numericCik}/${accNoHyphen}/${primaryDoc}`,
-        });
-      } else if (form === '10-Q' && tenQs.length < max10Q) {
-        const numericCik = cik.replace(/^0+/, '');
-        const accNoHyphen = accessionNumber.replace(/-/g, '');
-        tenQs.push({
-          symbol: symbol.toUpperCase(),
-          cik,
-          companyName,
-          form: '10-Q',
-          filingDate,
-          reportDate,
-          accessionNumber,
-          primaryDoc,
-          sourceUrl: `https://www.sec.gov/Archives/edgar/data/${numericCik}/${accNoHyphen}/${primaryDoc}`,
-        });
+      // Historical cutoff: strictly skip filings after endDate
+      if (endDate && filingDate > endDate) {
+        continue;
       }
 
-      if (tenKs.length >= max10K && tenQs.length >= max10Q) break;
+      const accNoHyphen = accessionNumber.replace(/-/g, '');
+      const sourceUrl = `https://www.sec.gov/Archives/edgar/data/${numericCik}/${accNoHyphen}/${primaryDoc}`;
+
+      const meta: SecFilingMeta = {
+        symbol: sym,
+        cik,
+        companyName,
+        form,
+        filingDate,
+        reportDate,
+        accessionNumber,
+        primaryDoc,
+        sourceUrl,
+      };
+
+      if ((form === '10-K' || form === '10-K/A') && tenKs.length < max10K) {
+        tenKs.push(meta);
+      } else if ((form === '10-Q' || form === '10-Q/A') && tenQs.length < max10Q) {
+        tenQs.push(meta);
+      } else if (form === '8-K' && eightKs.length < max8K) {
+        // Prioritize earnings-related 8-Ks if items metadata is present
+        const items = r.items?.[i] || '';
+        const isEarningsOrMaterial = items.includes('2.02') || items.includes('7.01') || items.length === 0;
+        if (isEarningsOrMaterial || eightKs.length < 1) {
+          eightKs.push(meta);
+        }
+      }
+
+      if (tenKs.length >= max10K && tenQs.length >= max10Q && eightKs.length >= max8K) {
+        break;
+      }
     }
 
-    return [...tenKs, ...tenQs];
+    return [...tenKs, ...tenQs, ...eightKs];
   }
 
   async ingestFiling(meta: SecFilingMeta, force = false): Promise<{ docId: string; sections: number; chunks: number }> {
@@ -112,7 +129,7 @@ export class SecIngestionPipeline {
     );
 
     // Parse sections
-    const parsedSections = parseSecSections(text, meta.form as '10-K' | '10-Q');
+    const parsedSections = parseSecSections(text, meta.form);
 
     // Generate chunks for each section
     const filingDateObj = new Date(meta.filingDate);
@@ -241,8 +258,9 @@ export class SecIngestionPipeline {
 
   async run(options: IngestionOptions = {}): Promise<IngestionStats> {
     const symbols = options.symbols ?? ['NVDA', 'AAPL', 'MSFT'];
-    const max10K = options.max10KPerSymbol ?? 3;
-    const max10Q = options.max10QPerSymbol ?? 4;
+    const max10K = options.max10KPerSymbol ?? 2;
+    const max10Q = options.max10QPerSymbol ?? 3;
+    const max8K = options.max8KPerSymbol ?? 2;
     const force = options.force ?? false;
     const onProgress = options.onProgress ?? ((msg) => console.log(msg));
 
@@ -257,8 +275,8 @@ export class SecIngestionPipeline {
     for (const symbol of symbols) {
       onProgress(`\n[Ingestion] Discovering filings for ${symbol}...`);
       try {
-        const filings = await this.discoverTargetFilings(symbol, max10K, max10Q);
-        onProgress(`[Ingestion] Found ${filings.length} filings for ${symbol} (${filings.filter(f => f.form === '10-K').length} 10-K, ${filings.filter(f => f.form === '10-Q').length} 10-Q)`);
+        const filings = await this.discoverTargetFilings(symbol, max10K, max10Q, max8K, options.endDate);
+        onProgress(`[Ingestion] Found ${filings.length} filings for ${symbol} (${filings.filter(f => f.form.includes('10-K')).length} 10-K, ${filings.filter(f => f.form.includes('10-Q')).length} 10-Q, ${filings.filter(f => f.form === '8-K').length} 8-K)`);
 
         for (const filing of filings) {
           try {

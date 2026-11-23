@@ -22,6 +22,7 @@ import {
 import {
   searchFinancialDocumentsTool,
   getDocumentSectionTool,
+  ensureFinancialDocumentCoverageTool,
 } from './document-tools.js';
 
 export interface OpenAiFunctionDefinition {
@@ -59,6 +60,7 @@ export class ToolRegistry {
     if (enableRag) {
       this.register(searchFinancialDocumentsTool);
       this.register(getDocumentSectionTool);
+      this.register(ensureFinancialDocumentCoverageTool);
     }
   }
 

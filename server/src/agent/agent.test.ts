@@ -26,11 +26,12 @@ describe('ToolRegistry & Agent Tools', () => {
     expect(names).toContain('get_portfolio_analysis');
   });
 
-  it('lists all 15 tools when financial RAG is enabled', () => {
+  it('lists all 16 tools when financial RAG is enabled (13 core + 3 RAG)', () => {
     const ragRegistry = new ToolRegistry({ enableFinancialRag: true });
-    expect(ragRegistry.list().length).toBe(15);
+    expect(ragRegistry.list().length).toBe(16);
     expect(ragRegistry.get('search_financial_documents')).toBeDefined();
     expect(ragRegistry.get('get_document_section')).toBeDefined();
+    expect(ragRegistry.get('ensure_financial_document_coverage')).toBeDefined();
   });
 
   it('generates valid OpenAI-compatible function calling schemas', () => {

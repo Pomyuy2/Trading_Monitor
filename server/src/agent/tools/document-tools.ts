@@ -1,6 +1,8 @@
 import { z } from 'zod/v4';
 import type { ToolDefinition, ToolResult } from '../types.js';
 import { retrievalService } from '../../rag/retrieval-service.js';
+import { coverageService } from '../../rag/coverage-service.js';
+import { jobCoordinator } from '../../rag/job-coordinator.js';
 
 function cleanSymbol(sym: string): string {
   return sym.trim().toUpperCase();
@@ -221,6 +223,164 @@ export const getDocumentSectionTool: ToolDefinition<{
         error: `Failed to retrieve document section: ${err.message}`,
         provenance: {
           source: 'SEC EDGAR (Section Store)',
+          updatedAt: new Date().toISOString(),
+          warnings: [err.message],
+        },
+      };
+    }
+  },
+};
+
+/**
+ * 3. ensure_financial_document_coverage
+ * Inspects SEC EDGAR filing coverage and autonomously ingests missing or stale filings.
+ */
+export const ensureFinancialDocumentCoverageTool: ToolDefinition<{
+  symbol: string;
+  form?: '10-K' | '10-Q' | '8-K' | 'all';
+  endDate?: string;
+  force?: boolean;
+}> = {
+  name: 'ensure_financial_document_coverage',
+  description:
+    'Inspect SEC EDGAR document coverage for an equity ticker and autonomously discover, ingest, and index missing or stale 10-K, 10-Q, and 8-K filings into the local financial knowledge base. Supports strict historical cutoff filtering (endDate).',
+  parameters: z.object({
+    symbol: z.string().min(1).max(15).describe('Stock ticker symbol, e.g. TSLA, NVDA, AAPL, AMZN, GOOGL'),
+    form: z.enum(['10-K', '10-Q', '8-K', 'all']).optional().describe('Filter by filing form type: 10-K (annual), 10-Q (quarterly), 8-K (current), or all'),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+      .optional()
+      .describe('CRITICAL for historical questions: strictly exclude filings accepted after this date (YYYY-MM-DD) to prevent lookahead bias'),
+    force: z.boolean().optional().describe('Whether to force re-ingestion of already indexed documents'),
+  }),
+  async execute(args, ctx): Promise<ToolResult> {
+    const sym = cleanSymbol(args.symbol);
+    const formFilter = args.form === 'all' || !args.form ? undefined : args.form;
+
+    try {
+      // 1. Initial coverage inspection
+      const initialCoverage = await coverageService.checkCoverage(sym, {
+        form: formFilter,
+        endDate: args.endDate,
+      });
+
+      if (initialCoverage.status === 'UNSUPPORTED') {
+        return {
+          success: true,
+          data: {
+            symbol: sym,
+            status: 'UNSUPPORTED',
+            message: initialCoverage.reason,
+            availableFilings: [],
+            missingFilings: [],
+            isNewlyIngested: false,
+          },
+          provenance: {
+            source: 'SEC EDGAR Ingestion Pipeline',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
+      if (initialCoverage.status === 'AVAILABLE') {
+        return {
+          success: true,
+          data: {
+            symbol: sym,
+            status: 'AVAILABLE',
+            message: `Document coverage satisfied for ${sym}. ${initialCoverage.availableCount} filings are indexed and ready for retrieval.`,
+            availableFilings: initialCoverage.availableFilings,
+            missingFilings: [],
+            isNewlyIngested: false,
+          },
+          provenance: {
+            source: 'SEC EDGAR Ingestion Pipeline',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
+      // 2. If MISSING or STALE, enqueue or join ingestion job
+      if (initialCoverage.status === 'MISSING' || initialCoverage.status === 'STALE' || args.force) {
+        const jobPromise = jobCoordinator.enqueueOrJoin(sym, {
+          userId: ctx.userId,
+          form: formFilter,
+          endDate: args.endDate,
+          force: args.force,
+        });
+
+        // Bounded wait in foreground (up to 12s, inside 20s per-tool limit)
+        const jobResult = await jobCoordinator.waitForJob(jobPromise, 12_000);
+
+        if (jobResult.timedOut) {
+          return {
+            success: true,
+            data: {
+              symbol: sym,
+              status: 'INGESTING',
+              message: `Ingestion job for ${sym} is currently running in the background. Documents will be ready shortly.`,
+              availableFilings: initialCoverage.availableFilings,
+              missingFilings: initialCoverage.missingFilings,
+              isNewlyIngested: false,
+            },
+            provenance: {
+              source: 'SEC EDGAR Ingestion Pipeline',
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        }
+
+        // Re-check coverage post-ingestion
+        const updatedCoverage = await coverageService.checkCoverage(sym, {
+          form: formFilter,
+          endDate: args.endDate,
+        });
+
+        return {
+          success: true,
+          data: {
+            symbol: sym,
+            status: updatedCoverage.status,
+            message:
+              jobResult.status === 'READY'
+                ? `Successfully ingested ${jobResult.documentsIngested} filings and created ${jobResult.chunksCreated} searchable chunks for ${sym}.`
+                : `Ingestion job finished with status ${jobResult.status}: ${jobResult.error ?? updatedCoverage.reason}`,
+            availableFilings: updatedCoverage.availableFilings,
+            missingFilings: updatedCoverage.missingFilings,
+            isNewlyIngested: jobResult.documentsIngested > 0,
+            documentsIngested: jobResult.documentsIngested,
+            chunksCreated: jobResult.chunksCreated,
+          },
+          provenance: {
+            source: 'SEC EDGAR Ingestion Pipeline',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
+      // If already INGESTING or UNAVAILABLE
+      return {
+        success: true,
+        data: {
+          symbol: sym,
+          status: initialCoverage.status,
+          message: initialCoverage.reason,
+          availableFilings: initialCoverage.availableFilings,
+          missingFilings: initialCoverage.missingFilings,
+          isNewlyIngested: false,
+        },
+        provenance: {
+          source: 'SEC EDGAR Ingestion Pipeline',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: `Failed to ensure document coverage for ${sym}: ${err.message}`,
+        provenance: {
+          source: 'SEC EDGAR Ingestion Pipeline',
           updatedAt: new Date().toISOString(),
           warnings: [err.message],
         },
