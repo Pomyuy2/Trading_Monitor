@@ -1,6 +1,7 @@
 import {
   isIntradayRange,
   isValidSymbol,
+  marketStatus,
   type AskAiResponse,
   type AskResolveResponse,
   type AskSource,
@@ -35,6 +36,7 @@ import {
 } from '../providers/types.js';
 import { rateLimitState } from '../lib/http.js';
 import { classicPivots, computeLevels, splitLevels } from '../analysis/levels.js';
+import { computeLevelsV2, splitLevelsV2, configForRange } from '../analysis/levels-v2.js';
 import { nyDate } from '../lib/market-time.js';
 import { finalizeGuidance, guidanceTexts, withTexts } from '../ai/guidance.js';
 import { findMentions, MAX_ASK_STOCKS, mentionsWatchlist, type KnownStock } from '../ai/ask-resolver.js';
@@ -414,16 +416,53 @@ export class MarketService {
     return out.filter((x): x is Sparkline => !!x);
   }
 
-  async levels(symbol: string, range: Range): Promise<LevelsResponse> {
+  async levels(symbol: string, range: Range, options?: { version?: 'v1' | 'v2' }): Promise<LevelsResponse> {
+    const defaultVersion = (process.env.LEVELS_VERSION === 'v2' ? 'v2' : 'v1') as 'v1' | 'v2';
+    const version = options?.version ?? defaultVersion;
+
     const series = await this.candles(symbol, range);
     const bars = series.candles;
     const last = bars[bars.length - 1];
-    const key = `levels:${series.meta.source}:${symbol}:${range}:${bars.length}:${last?.time ?? 0}`;
-    const scored = (await cached(this.cache, key, TTL.levels, async () => computeLevels(bars))).value;
+    const key = `levels:${version}:${series.meta.source}:${symbol}:${range}:${bars.length}:${last?.time ?? 0}:${last?.high ?? 0}:${last?.low ?? 0}:${last?.close ?? 0}`;
+
     const quote = await settle(this.quote(symbol));
     const price = quote?.price ?? last?.close ?? null;
-    const { supports, resistances } = price != null ? splitLevels(scored, price) : { supports: [], resistances: [] };
     const pivots = await settle(this.pivots(symbol, quote));
+
+    if (version === 'v2') {
+      let higherTfCandles: typeof bars | undefined;
+      if (range === '1D' || range === '1W') {
+        const higher = await settle(this.candles(symbol, '6M'));
+        if (higher && higher.candles.length >= 10) {
+          higherTfCandles = higher.candles;
+        }
+      }
+
+      const scoredV2 = (
+        await cached(this.cache, key, TTL.levels, async () =>
+          computeLevelsV2(bars, { range, higherTfCandles }),
+        )
+      ).value;
+
+      const { supports, resistances } = price != null ? splitLevelsV2(scoredV2, price) : { supports: [], resistances: [] };
+
+      return {
+        symbol,
+        range,
+        resolution: series.resolution,
+        price,
+        supports,
+        resistances,
+        pivots,
+        candleCount: bars.length,
+        meta: { ...series.meta },
+        methodVersion: 'v2',
+        config: configForRange(range) as unknown as Record<string, unknown>,
+      };
+    }
+
+    const scored = (await cached(this.cache, key, TTL.levels, async () => computeLevels(bars))).value;
+    const { supports, resistances } = price != null ? splitLevels(scored, price) : { supports: [], resistances: [] };
     return {
       symbol,
       range,
@@ -434,6 +473,7 @@ export class MarketService {
       pivots,
       candleCount: bars.length,
       meta: { ...series.meta },
+      methodVersion: 'v1',
     };
   }
 
@@ -441,7 +481,12 @@ export class MarketService {
   private async pivots(symbol: string, quote: Quote | null): Promise<Pivots | null> {
     const daily = await this.candles(symbol, '6M');
     const today = nyDate(Date.now() / 1000);
-    const sessionInProgress = quote?.marketState === 'open' || quote?.marketState === 'pre';
+    const mStatus = marketStatus();
+    const sessionInProgress =
+      quote?.marketState === 'open' ||
+      quote?.marketState === 'pre' ||
+      mStatus.phase === 'open' ||
+      mStatus.phase === 'pre';
     // Daily bars are keyed by their calendar date at 00:00 UTC.
     const dateOf = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
     const done = daily.candles.filter((c) => !sessionInProgress || dateOf(c.time) < today);

@@ -58,6 +58,20 @@ export function isIntradayRange(r: Range): boolean {
   return RESOLUTION_SECONDS[RANGE_RESOLUTION[r]] < 86400;
 }
 
+export interface LiveTick {
+  symbol: string;
+  price: number;
+  ts: number;
+  volume?: number;
+}
+
+export interface ChartLine {
+  price: number;
+  title: string;
+  color: string;
+  dashed?: boolean;
+}
+
 export interface PeriodFacts {
   fiscalYear: number;
   fiscalPeriod: 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'FY';
@@ -310,6 +324,16 @@ export interface EventsResponse {
 
 // ---- Support & resistance ----
 export type LevelStrength = 'weak' | 'medium' | 'strong';
+export type ZoneStatus = 'active' | 'tested' | 'broken' | 'flipped' | 'invalidated';
+
+export interface LevelScoreComponents {
+  touchScore: number;
+  reactionScore: number;
+  recencyScore: number;
+  volumeScore: number;
+  confluenceBonus: number;
+  penalty: number;
+}
 
 export interface PriceLevel {
   kind: 'support' | 'resistance';
@@ -320,6 +344,15 @@ export interface PriceLevel {
   lastTouched: string; // ISO timestamp of the most recent swing in this zone
   strength: LevelStrength;
   score: number; // 0..1
+  methodVersion?: 'v1' | 'v2';
+  zoneStatus?: ZoneStatus;
+  timeframe?: string;
+  atrAtDetection?: number;
+  confirmedReactions?: number;
+  breakoutCount?: number;
+  confluenceCount?: number;
+  scoreComponents?: LevelScoreComponents;
+  explanation?: string;
 }
 
 export interface Pivots {
@@ -342,6 +375,8 @@ export interface LevelsResponse {
   pivots: Pivots | null;
   candleCount: number;
   meta: SourceMeta;
+  methodVersion?: 'v1' | 'v2';
+  config?: Record<string, unknown>;
 }
 
 export interface WatchlistItem {
@@ -709,3 +744,5 @@ export interface UserProfileData {
 
 export * from './market-hours';
 export * from './payload-codec';
+export * from './indicators';
+

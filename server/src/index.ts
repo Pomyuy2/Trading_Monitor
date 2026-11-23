@@ -253,12 +253,14 @@ app.get<{ Params: { symbol: string }; Querystring: { range?: string } }>('/api/c
   return market.candles(s, range);
 });
 
-app.get<{ Params: { symbol: string }; Querystring: { range?: string } }>('/api/levels/:symbol', async (req, reply) => {
+app.get<{ Params: { symbol: string }; Querystring: { range?: string; v?: string; version?: string } }>('/api/levels/:symbol', async (req, reply) => {
   const s = parseSymbol(req.params.symbol, reply);
   if (!s) return;
   const range = req.query.range ?? '1D';
   if (!isRange(range)) return reply.code(400).send({ error: 'Invalid range' });
-  return market.levels(s, range);
+  const verParam = req.query.v ?? req.query.version;
+  const version = verParam === '2' || verParam === 'v2' ? 'v2' : verParam === '1' || verParam === 'v1' ? 'v1' : undefined;
+  return market.levels(s, range, version ? { version } : undefined);
 });
 
 app.get<{ Params: { symbol: string } }>('/api/events/:symbol', async (req, reply) => {
