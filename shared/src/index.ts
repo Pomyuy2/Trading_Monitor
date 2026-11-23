@@ -554,6 +554,7 @@ export interface ChatMessage {
   sources?: AskSource[];
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
+  agentVersion?: 'v1' | 'v2';
   /** Assistant messages: the stocks the answer looked up, and whether it covered the watchlist / was cut at the limit. */
   symbols?: string[];
   watchlist?: boolean;
@@ -628,6 +629,7 @@ export interface ConversationDetail {
 export interface StreamDoneEvent {
   executionTimeMs: number;
   model: string;
+  agentVersion?: 'v1' | 'v2';
   sources: AskSource[];
   toolSteps: ToolExecutionStep[];
   conversationId?: string;
@@ -650,6 +652,7 @@ export interface AskAiRequest {
   symbol?: string;
   question: string;
   lang: Lang;
+  agentVersion?: 'v1' | 'v2';
   contextMode?: ChatContextMode;
   contextRef?: string;
   conversationId?: string;
@@ -666,6 +669,7 @@ export interface AskAiResponse {
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
   model: string;
+  agentVersion?: 'v1' | 'v2';
   executionTimeMs?: number;
   conversationId?: string;
   /** Stocks the answer looked up in full detail, in the order the question named them. */

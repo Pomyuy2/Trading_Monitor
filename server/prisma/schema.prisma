@@ -190,3 +190,74 @@ model Conversation {
 
   @@index([userId, updatedAt])
 }
+
+/// Financial filings ingested from SEC EDGAR (10-K, 10-Q)
+model FinancialDocument {
+  id              String            @id // e.g. "sec-NVDA-10-K-2026-02-25"
+  symbol          String            // e.g. "NVDA"
+  cik             String            // e.g. "0001045810"
+  companyName     String            // e.g. "NVIDIA CORP"
+  form            String            // "10-K" | "10-Q"
+  filingDate      DateTime          // SEC filing acceptance date
+  filingDateStr   String            // ISO date string: YYYY-MM-DD
+  reportDate      DateTime?         // Period end date
+  reportDateStr   String?           // ISO date string: YYYY-MM-DD
+  accessionNumber String            // e.g. "0001045810-26-000015"
+  primaryDoc      String            // e.g. "nvda-20260125.htm"
+  sourceUrl       String            // SEC EDGAR URL
+  rawTextPath     String?           // Local cached file path
+  chunkCount      Int               @default(0)
+  createdAt       DateTime          @default(now())
+
+  sections        DocumentSection[]
+  chunks          DocumentChunk[]
+
+  @@unique([symbol, form, filingDateStr])
+  @@index([symbol, filingDateStr])
+  @@index([filingDateStr])
+}
+
+/// Logical section of an SEC filing (e.g. Item 1A Risk Factors, Item 7 MD&A)
+model DocumentSection {
+  id           String            @id // e.g. "sec-NVDA-10-K-2026-02-25-item-1a"
+  documentId   String
+  sectionCode  String            // e.g. "ITEM_1A", "ITEM_7", "ITEM_8"
+  sectionTitle String            // e.g. "Item 1A. Risk Factors"
+  orderIndex   Int               @default(0)
+  content      String            // Full text of the section
+  chunkCount   Int               @default(0)
+
+  document     FinancialDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunks       DocumentChunk[]
+
+  @@unique([documentId, sectionCode])
+  @@index([documentId])
+  @@index([sectionCode])
+}
+
+/// Granular searchable chunk of text with stable citation ID
+model DocumentChunk {
+  id            String            @id // e.g. "SEC-NVDA-10-K-2026-02-25-ITEM_1A-c1"
+  documentId    String
+  sectionId     String
+  symbol        String            // "NVDA"
+  form          String            // "10-K"
+  filingDate    DateTime          // SEC filing acceptance date
+  filingDateStr String            // ISO date string: YYYY-MM-DD
+  reportDate    DateTime?         // Period end date
+  reportDateStr String?           // ISO date string: YYYY-MM-DD
+  sectionCode   String            // "ITEM_1A"
+  sectionTitle  String            // "Item 1A. Risk Factors"
+  chunkIndex    Int               // Sequential index within section (1, 2, 3...)
+  tokenCount    Int               // Estimated token count
+  content       String            // Chunk text
+
+  document      FinancialDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  section       DocumentSection   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([sectionId])
+  @@index([symbol, filingDateStr])
+  @@index([symbol, form, filingDateStr])
+  @@index([symbol, sectionCode])
+}

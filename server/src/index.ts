@@ -69,9 +69,13 @@ const users = new UserService(db, process.env, log);
 await users.init();
 const portfolio = new PortfolioService(db);
 const conversationService = new ConversationService(db);
-const researchAgent =
+const researchAgentV1 =
   env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
-    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log)
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: false })
+    : null;
+const researchAgentV2 =
+  env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: true })
     : null;
 const defaultAdminId = await users.getDefaultUserId();
 await watchlist.init(defaultAdminId);
@@ -314,6 +318,7 @@ const askBodySchema = z.object({
   pageSymbol: z.string().max(15).optional(),
   question: z.string().min(1).max(1000),
   lang: z.enum(['en', 'th']).optional().default('en'),
+  agentVersion: z.enum(['v1', 'v2']).optional(),
   context: askSymbolList,
   contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
   contextRef: z.string().max(50).optional().nullable(),
@@ -327,6 +332,36 @@ const askBodySchema = z.object({
     )
     .optional(),
 });
+
+function resolveResearchAgent(
+  req: { userId?: string; userEmail?: string },
+  requestedVersion: 'v1' | 'v2' | undefined,
+): { agent: InvestmentResearchAgent | null; version: 'v1' | 'v2' } {
+  // Production default is strictly V1
+  if (!requestedVersion || requestedVersion === 'v1') {
+    return { agent: researchAgentV1, version: 'v1' };
+  }
+
+  // V2 is opt-in beta and requires authorization
+  // Server-side enforcement: unauthenticated users cannot access V2
+  const isAuthenticated = Boolean(req.userId && req.userId !== 'default-user');
+  if (!isAuthenticated) {
+    app.log.warn(`Unauthorized V2 beta attempt from unauthenticated user (${req.userId ?? 'anonymous'}); defaulting to V1`);
+    return { agent: researchAgentV1, version: 'v1' };
+  }
+
+  // If specific beta emails are configured via BETA_AUTHORIZED_EMAILS, enforce allowlist
+  const betaEmailsEnv = process.env.BETA_AUTHORIZED_EMAILS;
+  if (betaEmailsEnv && req.userEmail) {
+    const allowedEmails = betaEmailsEnv.split(',').map((e) => e.trim().toLowerCase());
+    if (!allowedEmails.includes(req.userEmail.toLowerCase())) {
+      app.log.warn(`User ${req.userEmail} not in beta allowlist; defaulting to V1`);
+      return { agent: researchAgentV1, version: 'v1' };
+    }
+  }
+
+  return { agent: researchAgentV2 ?? researchAgentV1, version: 'v2' };
+}
 
 function getDemoAnalysis(
   question: string,
@@ -519,9 +554,11 @@ app.post('/api/ai/ask', async (req, reply) => {
     return resp;
   }
 
-  if (researchAgent) {
+  const { agent: activeAgent, version: effectiveVersion } = resolveResearchAgent(req, parsed.data.agentVersion);
+
+  if (activeAgent) {
     try {
-      const result = await researchAgent.research(
+      const result = await activeAgent.research(
         parsed.data.question.trim(),
         s ?? undefined,
         parsed.data.lang,
@@ -530,16 +567,17 @@ app.post('/api/ai/ask', async (req, reply) => {
         contextMode,
         contextRef,
       );
+      (result as any).agentVersion = effectiveVersion;
       if (parsed.data.conversationId) {
         await conversationService.appendMessages(uid, parsed.data.conversationId, [
           { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
-          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, agentVersion: effectiveVersion, ts: Date.now() },
         ], contextMode, contextRef).catch(() => {});
         (result as any).conversationId = parsed.data.conversationId;
       }
       return result;
     } catch (err) {
-      app.log.warn(`Research agent failed, falling back to askStock: ${(err as Error).message}`);
+      app.log.warn(`Research agent (${effectiveVersion}) failed, falling back to askStock: ${(err as Error).message}`);
     }
   }
 
@@ -666,15 +704,22 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
     return;
   }
 
-  if (researchAgent) {
+  const { agent: activeAgent, version: effectiveVersion } = resolveResearchAgent(req, parsed.data.agentVersion);
+
+  if (activeAgent) {
     try {
-      const result = await researchAgent.researchStream(
+      const result = await activeAgent.researchStream(
         parsed.data.question.trim(),
         s ?? undefined,
         parsed.data.lang,
         ctx,
         parsed.data.history,
-        sendEvent,
+        (event) => {
+          if (event.type === 'done') {
+            event.data.agentVersion = effectiveVersion;
+          }
+          sendEvent(event);
+        },
         abortController.signal,
         contextMode,
         contextRef,
@@ -682,7 +727,7 @@ app.post('/api/ai/ask/stream', async (req, reply) => {
       if (parsed.data.conversationId && result && !abortController.signal.aborted) {
         await conversationService.appendMessages(uid, parsed.data.conversationId, [
           { id: `u-${Date.now()}`, role: 'user', content: parsed.data.question.trim(), ts: Date.now() },
-          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, ts: Date.now() },
+          { id: `a-${Date.now()}`, role: 'assistant', content: result.answer, sources: result.sources, report: result.report, toolSteps: result.toolSteps, agentVersion: effectiveVersion, ts: Date.now() },
         ], contextMode, contextRef).catch(() => {});
       }
     } catch (err) {

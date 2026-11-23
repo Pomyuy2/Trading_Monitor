@@ -41,6 +41,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<string>('combo1');
+  const [agentVersion, setAgentVersion] = useState<'v1' | 'v2'>('v1');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -353,6 +354,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
                         streamingStatus: undefined,
                         sources: event.data.sources ?? m.sources,
                         toolSteps: event.data.toolSteps ?? m.toolSteps,
+                        agentVersion: event.data.agentVersion ?? agentVersion,
                       }
                     : m,
                 ),
@@ -386,6 +388,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
           contextMode,
           contextRef,
           conversationId: activeConvId,
+          agentVersion,
         },
       );
     } catch (err: unknown) {
@@ -413,6 +416,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
             contextMode,
             contextRef,
             conversationId: activeConvId,
+            agentVersion,
           });
           if (res.model) setActiveModel(res.model);
           if (res.conversationId && !currentConversationId) {
@@ -428,6 +432,7 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
                     sources: res.sources,
                     report: res.report,
                     toolSteps: res.toolSteps,
+                    agentVersion: res.agentVersion ?? agentVersion,
                     isStreaming: false,
                     streamingStatus: undefined,
                   }
@@ -549,8 +554,8 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
             </div>
           </div>
 
-          {/* Context Selector Pill Bar */}
-          <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
+          {/* Context Selector Pill Bar & Engine Toggle */}
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
             <div className="flex items-center gap-1">
               <span className="text-muted mr-1 font-medium">{t('context')}:</span>
               {(['global', 'stock', 'portfolio'] as const).map((mode) => (
@@ -570,38 +575,79 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
               ))}
             </div>
 
-            {/* Context Sub-controls: Stock symbol input or Portfolio select */}
-            {contextMode === 'stock' && (
-              <div className="flex items-center gap-1.5 font-mono">
-                <input
-                  type="text"
-                  value={activeSymbol}
-                  onChange={(e) => setActiveSymbol(e.target.value.toUpperCase())}
-                  placeholder="SYMBOL"
-                  className="w-20 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-xs text-text text-center font-bold focus:border-accent focus:outline-none"
-                />
-                {quote && quote.price != null && activeSymbol === symbol && (
-                  <span className="text-muted hidden sm:inline">
-                    {fmtPrice(quote.price, lang, quote.currency)}
-                  </span>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Context Sub-controls: Stock symbol input or Portfolio select */}
+              {contextMode === 'stock' && (
+                <div className="flex items-center gap-1.5 font-mono">
+                  <input
+                    type="text"
+                    value={activeSymbol}
+                    onChange={(e) => setActiveSymbol(e.target.value.toUpperCase())}
+                    placeholder="SYMBOL"
+                    className="w-20 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-xs text-text text-center font-bold focus:border-accent focus:outline-none"
+                  />
+                  {quote && quote.price != null && activeSymbol === symbol && (
+                    <span className="text-muted hidden sm:inline">
+                      {fmtPrice(quote.price, lang, quote.currency)}
+                    </span>
+                  )}
+                </div>
+              )}
 
-            {contextMode === 'portfolio' && portfolios.length > 0 && (
-              <select
-                value={selectedPortfolioId}
-                onChange={(e) => setSelectedPortfolioId(e.target.value)}
-                className="rounded border border-border bg-panel-2 px-2 py-0.5 text-xs text-text focus:border-accent focus:outline-none max-w-[140px] truncate"
+              {contextMode === 'portfolio' && portfolios.length > 0 && (
+                <select
+                  value={selectedPortfolioId}
+                  onChange={(e) => setSelectedPortfolioId(e.target.value)}
+                  className="rounded border border-border bg-panel-2 px-2 py-0.5 text-xs text-text focus:border-accent focus:outline-none max-w-[140px] truncate"
+                >
+                  <option value="">{t('allPortfolios')}</option>
+                  {portfolios.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Research Engine Toggle: V1 Standard vs V2 Beta */}
+              <div
+                className="flex items-center rounded-lg border border-border/60 bg-panel-2/60 p-0.5"
+                title={t('versionTooltip')}
               >
-                <option value="">{t('allPortfolios')}</option>
-                {portfolios.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            )}
+                <button
+                  type="button"
+                  onClick={() => setAgentVersion('v1')}
+                  className={cx(
+                    'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+                    agentVersion === 'v1'
+                      ? 'bg-button text-white shadow-xs'
+                      : 'text-muted hover:text-text',
+                  )}
+                >
+                  {t('versionV1')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgentVersion('v2')}
+                  className={cx(
+                    'rounded px-2 py-0.5 text-[11px] font-medium transition-colors flex items-center gap-1',
+                    agentVersion === 'v2'
+                      ? 'bg-accent text-white shadow-xs'
+                      : 'text-muted hover:text-text',
+                  )}
+                >
+                  <span>{t('versionV2')}</span>
+                  <span
+                    className={cx(
+                      'text-[9px] uppercase px-1 py-0.2 rounded font-bold',
+                      agentVersion === 'v2' ? 'bg-black/20 text-white' : 'bg-accent/15 text-accent',
+                    )}
+                  >
+                    {t('versionV2Badge')}
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -701,6 +747,11 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent">
                           <SparkIcon width={14} height={14} />
                           <span>{t('title')}</span>
+                          {m.agentVersion === 'v2' && (
+                            <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold text-accent tracking-normal normal-case">
+                              V2 Beta (SEC RAG)
+                            </span>
+                          )}
                         </div>
                         {m.isStreaming && (
                           <div className="flex items-center gap-2">

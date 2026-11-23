@@ -6,6 +6,8 @@ dist
 .env.local
 *.db
 *.db-journal
+*.backup*
+server/data/
 coverage
 playwright-report
 test-results
@@ -17,3 +19,4 @@ blob-report
 logs/
 .run/
 img/
+server/data/

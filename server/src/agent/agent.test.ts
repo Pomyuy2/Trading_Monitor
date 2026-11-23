@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry } from './tools/registry.js';
+import { InvestmentResearchAgent } from './research-agent.js';
 import type { AgentContext } from './types.js';
 
 describe('ToolRegistry & Agent Tools', () => {
-  const registry = new ToolRegistry();
+  const registry = new ToolRegistry({ enableFinancialRag: false });
 
-  it('lists all 13 investment research and portfolio tools', () => {
+  it('lists all 13 investment research and portfolio tools in baseline mode', () => {
     const tools = registry.list();
     expect(tools.length).toBe(13);
     const names = tools.map((t) => t.name);
@@ -23,6 +24,13 @@ describe('ToolRegistry & Agent Tools', () => {
     expect(names).toContain('compare_stocks');
     expect(names).toContain('get_user_portfolios');
     expect(names).toContain('get_portfolio_analysis');
+  });
+
+  it('lists all 15 tools when financial RAG is enabled', () => {
+    const ragRegistry = new ToolRegistry({ enableFinancialRag: true });
+    expect(ragRegistry.list().length).toBe(15);
+    expect(ragRegistry.get('search_financial_documents')).toBeDefined();
+    expect(ragRegistry.get('get_document_section')).toBeDefined();
   });
 
   it('generates valid OpenAI-compatible function calling schemas', () => {
@@ -142,5 +150,22 @@ describe('ToolRegistry & Agent Tools', () => {
     expect(data.length).toBe(2);
     expect(data[0].symbol).toBe('AAPL');
     expect(data[1].symbol).toBe('NVDA');
+  });
+
+  it('generates system prompt containing missing 8-K guidance, multi-stock budget, and cutoff rules in V2 RAG mode', () => {
+    const agentV1 = new InvestmentResearchAgent('http://fake', 'key', 'model', console, { enableFinancialRag: false });
+    const agentV2 = new InvestmentResearchAgent('http://fake', 'key', 'model', console, { enableFinancialRag: true });
+
+    expect(agentV1.enableFinancialRag).toBe(false);
+    expect(agentV2.enableFinancialRag).toBe(true);
+
+    const promptV1 = (agentV1 as any).buildSystemPrompt({}, false, 'global');
+    const promptV2 = (agentV2 as any).buildSystemPrompt({}, false, 'global');
+
+    expect(promptV1).not.toContain('MISSING 8-K GUIDANCE');
+    expect(promptV2).toContain('MISSING 8-K GUIDANCE & DOCUMENT HORIZON LIMITATION');
+    expect(promptV2).toContain('MULTI-STOCK QUESTIONS & BOUNDED TOOL BUDGET');
+    expect(promptV2).toContain('HISTORICAL TIME AWARENESS (STRICTLY NO LOOKAHEAD)');
+    expect(promptV2).toContain('search_financial_documents');
   });
 });

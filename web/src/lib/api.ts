@@ -222,6 +222,7 @@ export async function askAi(
     contextMode?: ChatContextMode;
     contextRef?: string | null;
     conversationId?: string;
+    agentVersion?: 'v1' | 'v2';
   },
 ): Promise<AskAiResponse> {
   if (typeof symbolOrReq === 'object' && symbolOrReq !== null && 'question' in symbolOrReq) {
@@ -240,6 +241,7 @@ export async function askAi(
       contextMode: options?.contextMode,
       contextRef: options?.contextRef,
       conversationId: options?.conversationId,
+      agentVersion: options?.agentVersion,
     }),
   });
 }
@@ -268,6 +270,7 @@ export async function askAiStream(
     contextMode?: ChatContextMode;
     contextRef?: string | null;
     conversationId?: string;
+    agentVersion?: 'v1' | 'v2';
   },
 ): Promise<void> {
   const res = await fetch('/api/ai/ask/stream', {
@@ -284,6 +287,7 @@ export async function askAiStream(
       contextMode: options?.contextMode,
       contextRef: options?.contextRef,
       conversationId: options?.conversationId,
+      agentVersion: options?.agentVersion,
     }),
     signal,
   });

@@ -19,6 +19,10 @@ import {
   getPortfolioAnalysisTool,
   getUserPortfoliosTool,
 } from './portfolio-tools.js';
+import {
+  searchFinancialDocumentsTool,
+  getDocumentSectionTool,
+} from './document-tools.js';
 
 export interface OpenAiFunctionDefinition {
   type: 'function';
@@ -29,10 +33,14 @@ export interface OpenAiFunctionDefinition {
   };
 }
 
+export interface ToolRegistryOptions {
+  enableFinancialRag?: boolean;
+}
+
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
 
-  constructor() {
+  constructor(options: ToolRegistryOptions = {}) {
     this.register(getQuoteTool);
     this.register(getCandlesTool);
     this.register(getCompanyProfileTool);
@@ -46,6 +54,12 @@ export class ToolRegistry {
     this.register(compareStocksTool);
     this.register(getUserPortfoliosTool);
     this.register(getPortfolioAnalysisTool);
+
+    const enableRag = options.enableFinancialRag ?? (process.env.FINANCIAL_RAG_ENABLED !== 'false');
+    if (enableRag) {
+      this.register(searchFinancialDocumentsTool);
+      this.register(getDocumentSectionTool);
+    }
   }
 
   register(tool: ToolDefinition): void {
