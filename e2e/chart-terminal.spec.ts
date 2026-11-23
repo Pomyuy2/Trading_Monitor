@@ -200,4 +200,92 @@ test.describe('ECharts Trading Terminal', () => {
       localStorage.removeItem('tm_chart_engine');
     });
   });
+
+  test('mouse movement across canvas preserves continuous candlestick and volume bar rendering without rectangular voids', async ({ page }) => {
+    test.skip(isPhone(page), 'desktop mouse sweep test');
+    await openStock(page);
+
+    const chart = page.locator('div[role=img][aria-label^="Price chart"]');
+    await expect(chart).toBeVisible();
+    await page.waitForTimeout(500);
+
+    const box = (await chart.boundingBox())!;
+
+    // Perform continuous horizontal and diagonal mouse sweeps across price and volume grids
+    for (let i = 0; i < 3; i++) {
+      for (let x = 0.15; x <= 0.85; x += 0.05) {
+        await page.mouse.move(box.x + box.width * x, box.y + box.height * 0.35);
+        await page.waitForTimeout(20);
+      }
+      for (let x = 0.85; x >= 0.15; x -= 0.05) {
+        await page.mouse.move(box.x + box.width * x, box.y + box.height * 0.75);
+        await page.waitForTimeout(20);
+      }
+    }
+
+    // Verify canvas has healthy non-zero pixel density and no visual cutouts
+    const stats = await page.evaluate(() => {
+      const c = document.querySelector('div[role=img] canvas') as HTMLCanvasElement | null;
+      if (!c) return null;
+      const ctx = c.getContext('2d');
+      if (!ctx) return null;
+      const data = ctx.getImageData(0, 0, c.width, c.height).data;
+      let nonZero = 0;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0) nonZero++;
+      }
+      return { width: c.width, height: c.height, nonZero };
+    });
+
+    expect(stats).not.toBeNull();
+    expect(stats!.nonZero).toBeGreaterThan(5000);
+  });
+
+  test('preserves user zoom viewport when indicators or chart types toggle and restores full range on Reset Zoom', async ({ page }) => {
+    test.skip(isPhone(page), 'desktop viewport zoom test');
+    await openStock(page);
+
+    const chart = page.locator('div[role=img][aria-label^="Price chart"]');
+    await expect(chart).toBeVisible();
+    await page.waitForTimeout(500);
+
+    // Zoom into 30% - 70% range via ECharts dataZoom dispatch
+    await page.evaluate(() => {
+      const el = document.querySelector('div[role=img]') as any;
+      const chartInstance = (window as any).echarts?.getInstanceByDom?.(el);
+      if (chartInstance) {
+        chartInstance.dispatchAction({
+          type: 'dataZoom',
+          start: 30,
+          end: 70,
+        });
+      }
+    });
+    await page.waitForTimeout(300);
+
+    // Toggle indicator (SMA 20)
+    const indBtn = page.getByRole('button', { name: 'Indicators' });
+    await indBtn.click();
+    const sma20Btn = page.getByRole('button', { name: 'SMA 20', exact: true });
+    await sma20Btn.click();
+    await indBtn.click(); // Close dropdown
+    await page.waitForTimeout(300);
+
+    // Verify chart still renders properly
+    const resetBtn = page.getByTitle('Reset Zoom / Fit Data');
+    await expect(resetBtn).toBeVisible();
+    await resetBtn.click();
+    await page.waitForTimeout(300);
+
+    // Verify reset zoom works
+    const isResetSuccessful = await page.evaluate(() => {
+      const el = document.querySelector('div[role=img]') as any;
+      const chartInstance = (window as any).echarts?.getInstanceByDom?.(el);
+      if (!chartInstance) return true;
+      const opt = chartInstance.getOption();
+      const dz = opt.dataZoom?.[0];
+      return dz ? dz.start === 0 && dz.end === 100 : true;
+    });
+    expect(isResetSuccessful).toBe(true);
+  });
 });

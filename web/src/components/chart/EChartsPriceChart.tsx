@@ -142,10 +142,15 @@ export function EChartsPriceChart({
   const [hover, setHover] = useState<HoverState | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Viewport zoom state preservation and structure tracking
+  const currentZoomRef = useRef<{ start: number; end: number } | null>(null);
+  const prevStructureRef = useRef<string>('');
+
   const comparing = compares.some((c) => c.candles.length > 0);
 
   // Sync incoming initial candles when symbol or range changes
   useEffect(() => {
+    currentZoomRef.current = null;
     setCandles(initialCandles);
   }, [initialCandles, symbol, resolution]);
 
@@ -248,13 +253,42 @@ export function EChartsPriceChart({
     [candles, compares, comparing],
   );
 
+  // Keep latest mutable props in ref to prevent stale closures in chart event listeners
+  const latestPropsRef = useRef({
+    candles,
+    compares,
+    comparisonData,
+    eventsByBar,
+    activeOverlays,
+    activePanel,
+    indicators,
+    comparing,
+    colors,
+  });
+
+  useEffect(() => {
+    latestPropsRef.current = {
+      candles,
+      compares,
+      comparisonData,
+      eventsByBar,
+      activeOverlays,
+      activePanel,
+      indicators,
+      comparing,
+      colors,
+    };
+  });
+
   // Initialize and dispose ECharts instance
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // useDirtyRect: false is essential to prevent partial canvas bounding box clear
+    // artifacts / rectangular holes in candlesticks and volume bars across multi-grid layouts
     const chart = echarts.init(containerRef.current, null, {
       renderer: 'canvas',
-      useDirtyRect: true,
+      useDirtyRect: false,
     });
     chartInstance.current = chart;
 
@@ -265,8 +299,36 @@ export function EChartsPriceChart({
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(containerRef.current);
 
-    // Crosshair hover tracking
+    // Track user viewport zoom/pan
+    chart.on('datazoom', (params: any) => {
+      let start: number | undefined;
+      let end: number | undefined;
+      if (params.batch && params.batch.length > 0) {
+        start = params.batch[0].start;
+        end = params.batch[0].end;
+      } else {
+        start = params.start;
+        end = params.end;
+      }
+      if (typeof start === 'number' && typeof end === 'number') {
+        currentZoomRef.current = { start, end };
+      }
+    });
+
+    // Crosshair hover tracking using latestPropsRef
     chart.on('updateAxisPointer', (event: any) => {
+      const {
+        candles: curCandles,
+        compares: curCompares,
+        comparisonData: curComparisonData,
+        eventsByBar: curEventsByBar,
+        activeOverlays: curActiveOverlays,
+        activePanel: curActivePanel,
+        indicators: curIndicators,
+        comparing: curComparing,
+        colors: curColors,
+      } = latestPropsRef.current;
+
       const dataInfo = event.dataInfo;
       let dataIndex: number | null = null;
       if (event.axesInfo && event.axesInfo.length > 0) {
@@ -275,60 +337,60 @@ export function EChartsPriceChart({
         dataIndex = dataInfo.dataIndex;
       }
 
-      if (dataIndex == null || dataIndex < 0 || dataIndex >= candles.length) {
+      if (dataIndex == null || dataIndex < 0 || dataIndex >= curCandles.length) {
         setHover(null);
         return;
       }
 
-      const candle = candles[dataIndex];
-      const prevClose = dataIndex > 0 ? candles[dataIndex - 1].close : null;
+      const candle = curCandles[dataIndex];
+      const prevClose = dataIndex > 0 ? curCandles[dataIndex - 1].close : null;
 
       // Compares percentage
-      const cmpList = compares.map((cs, j) => {
-        const val = comparisonData?.compareSeries[j]?.data[dataIndex];
+      const cmpList = curCompares.map((cs, j) => {
+        const val = curComparisonData?.compareSeries[j]?.data[dataIndex];
         return { symbol: cs.symbol, color: cs.color, pct: val ?? null };
       });
 
-      const mainPct = comparisonData ? comparisonData.basePct[dataIndex] : null;
-      const barEvents = eventsByBar.get(candle.time);
+      const mainPct = curComparisonData ? curComparisonData.basePct[dataIndex] : null;
+      const barEvents = curEventsByBar.get(candle.time);
 
       // Indicator inspection
       const indList: { label: string; color: string; value: number | string }[] = [];
-      for (const k of activeOverlays) {
+      for (const k of curActiveOverlays) {
         const conf = OVERLAY_CONFIGS[k];
-        if (k === 'bollinger' && indicators.bollinger) {
-          const mid = indicators.bollinger.middle[dataIndex];
-          const up = indicators.bollinger.upper[dataIndex];
-          const low = indicators.bollinger.lower[dataIndex];
+        if (k === 'bollinger' && curIndicators.bollinger) {
+          const mid = curIndicators.bollinger.middle[dataIndex];
+          const up = curIndicators.bollinger.upper[dataIndex];
+          const low = curIndicators.bollinger.lower[dataIndex];
           if (mid != null) indList.push({ label: 'BB Mid', color: conf.color, value: mid.toFixed(2) });
           if (up != null) indList.push({ label: 'BB Upper', color: conf.color, value: up.toFixed(2) });
           if (low != null) indList.push({ label: 'BB Lower', color: conf.color, value: low.toFixed(2) });
         } else {
-          const series = (indicators as any)[k] as (number | null)[] | undefined;
+          const series = (curIndicators as any)[k] as (number | null)[] | undefined;
           if (series && series[dataIndex] != null) {
             indList.push({ label: conf.label, color: conf.color, value: series[dataIndex]!.toFixed(2) });
           }
         }
       }
 
-      if (activePanel) {
-        const conf = PANEL_CONFIGS[activePanel];
-        if (activePanel === 'macd' && indicators.macd) {
-          const m = indicators.macd.macd[dataIndex];
-          const s = indicators.macd.signal[dataIndex];
-          const h = indicators.macd.histogram[dataIndex];
+      if (curActivePanel) {
+        const conf = PANEL_CONFIGS[curActivePanel];
+        if (curActivePanel === 'macd' && curIndicators.macd) {
+          const m = curIndicators.macd.macd[dataIndex];
+          const s = curIndicators.macd.signal[dataIndex];
+          const h = curIndicators.macd.histogram[dataIndex];
           if (m != null) indList.push({ label: 'MACD', color: '#38bdf8', value: m.toFixed(2) });
           if (s != null) indList.push({ label: 'Signal', color: '#f43f5e', value: s.toFixed(2) });
-          if (h != null) indList.push({ label: 'Hist', color: h >= 0 ? colors.up : colors.down, value: h.toFixed(2) });
-        } else if (activePanel === 'adx' && indicators.adx) {
-          const a = indicators.adx.adx[dataIndex];
-          const p = indicators.adx.plusDI[dataIndex];
-          const m = indicators.adx.minusDI[dataIndex];
+          if (h != null) indList.push({ label: 'Hist', color: h >= 0 ? curColors.up : curColors.down, value: h.toFixed(2) });
+        } else if (curActivePanel === 'adx' && curIndicators.adx) {
+          const a = curIndicators.adx.adx[dataIndex];
+          const p = curIndicators.adx.plusDI[dataIndex];
+          const m = curIndicators.adx.minusDI[dataIndex];
           if (a != null) indList.push({ label: 'ADX', color: conf.color, value: a.toFixed(2) });
-          if (p != null) indList.push({ label: '+DI', color: colors.up, value: p.toFixed(2) });
-          if (m != null) indList.push({ label: '-DI', color: colors.down, value: m.toFixed(2) });
+          if (p != null) indList.push({ label: '+DI', color: curColors.up, value: p.toFixed(2) });
+          if (m != null) indList.push({ label: '-DI', color: curColors.down, value: m.toFixed(2) });
         } else {
-          const series = (indicators as any)[activePanel] as (number | null)[] | undefined;
+          const series = (curIndicators as any)[curActivePanel] as (number | null)[] | undefined;
           if (series && series[dataIndex] != null) {
             indList.push({ label: conf.label, color: conf.color, value: series[dataIndex]!.toFixed(2) });
           }
@@ -342,7 +404,7 @@ export function EChartsPriceChart({
         y: Array.isArray(point) ? point[1] : 50,
         candle,
         prevClose,
-        compares: comparing ? cmpList : [],
+        compares: curComparing ? cmpList : [],
         mainPct,
         earnings: barEvents?.earnings ?? [],
         dividends: barEvents?.dividends ?? [],
@@ -358,6 +420,7 @@ export function EChartsPriceChart({
       resizeObserver.disconnect();
       chart.dispose();
       chartInstance.current = null;
+      prevStructureRef.current = '';
     };
   }, []);
 
@@ -712,40 +775,61 @@ export function EChartsPriceChart({
     }
 
     const defaultZoomStart = candles.length > 80 ? Math.max(0, 100 - (80 / candles.length) * 100) : 0;
+    const zoomStart = currentZoomRef.current ? currentZoomRef.current.start : defaultZoomStart;
+    const zoomEnd = currentZoomRef.current ? currentZoomRef.current.end : 100;
 
-    chart.setOption(
-      {
-        animation: false,
-        backgroundColor: 'transparent',
-        grid: grids,
-        xAxis: xAxes,
-        yAxis: yAxes,
-        axisPointer: {
-          link: [{ xAxisIndex: 'all' }],
+    const structureKey = `${symbol}_${resolution}_${chartType}_${activeOverlays.slice().sort().join(',')}_${activePanel}_${comparing}_${theme}_${currency}_${lang}`;
+    const hasExistingGrid = Boolean(chart.getOption()?.grid);
+    const isStructureChange = !hasExistingGrid || prevStructureRef.current !== structureKey;
+    prevStructureRef.current = structureKey;
+
+    if (!isStructureChange) {
+      // Data-only update (e.g. streaming ticks or candle updates):
+      // Update series and axes smoothly without tearing down grid layout or resetting user zoom
+      chart.setOption(
+        {
+          xAxis: xAxes,
+          yAxis: yAxes,
+          series: seriesList,
         },
-        dataZoom: [
-          {
-            type: 'inside',
-            xAxisIndex: grids.map((_, i) => i),
-            start: defaultZoomStart,
-            end: 100,
+        { notMerge: false, replaceMerge: ['series'] },
+      );
+    } else {
+      // Structural re-render: layout, indicators, timeframe, compare or theme changed
+      chart.setOption(
+        {
+          animation: false,
+          backgroundColor: 'transparent',
+          grid: grids,
+          xAxis: xAxes,
+          yAxis: yAxes,
+          axisPointer: {
+            link: [{ xAxisIndex: 'all' }],
           },
-          {
-            type: 'slider',
-            xAxisIndex: grids.map((_, i) => i),
-            bottom: 2,
-            height: 14,
-            borderColor: 'transparent',
-            backgroundColor: 'transparent',
-            fillerColor: 'rgba(76,141,255,0.12)',
-            showDetail: false,
-            handleSize: '60%',
-          },
-        ],
-        series: seriesList,
-      },
-      { notMerge: true },
-    );
+          dataZoom: [
+            {
+              type: 'inside',
+              xAxisIndex: grids.map((_, i) => i),
+              start: zoomStart,
+              end: zoomEnd,
+            },
+            {
+              type: 'slider',
+              xAxisIndex: grids.map((_, i) => i),
+              bottom: 2,
+              height: 14,
+              borderColor: 'transparent',
+              backgroundColor: 'transparent',
+              fillerColor: 'rgba(76,141,255,0.12)',
+              showDetail: false,
+              handleSize: '60%',
+            },
+          ],
+          series: seriesList,
+        },
+        { notMerge: true },
+      );
+    }
   }, [
     candles,
     chartType,
@@ -762,54 +846,26 @@ export function EChartsPriceChart({
     colors,
     lang,
     currency,
+    symbol,
+    resolution,
   ]);
 
-  // Handle Live Quote Ticks incrementally
+  // Handle Live Quote Ticks: single consistent update lifecycle
   const onTick = useCallback(
     (tick: LiveTick) => {
       setCandles((prev) => {
-        const { updatedCandles, isNewBar, lastBar } = updateCandlesWithTick(prev, tick, resolution);
-        // If chart exists and only the last bar was modified, perform fast incremental update
-        const chart = chartInstance.current;
-        if (chart && !isNewBar && prev.length === updatedCandles.length) {
-          const lastIdx = prev.length - 1;
-          // Quickly update candle and volume points without full redraw
-          if (chartType === 'candles') {
-            chart.setOption({
-              series: [
-                {
-                  name: symbol,
-                  data: [
-                    ...formattedData.candlestickData.slice(0, -1),
-                    [lastBar.open, lastBar.close, lastBar.low, lastBar.high],
-                  ],
-                },
-                {
-                  name: 'Volume',
-                  data: [
-                    ...formattedData.volumeData.slice(0, -1),
-                    {
-                      value: lastBar.volume,
-                      itemStyle: {
-                        color: lastBar.close >= lastBar.open ? colors.volUp : colors.volDown,
-                      },
-                    },
-                  ],
-                },
-              ],
-            });
-          }
-        }
+        const { updatedCandles } = updateCandlesWithTick(prev, tick, resolution);
         return updatedCandles;
       });
     },
-    [resolution, chartType, symbol, formattedData, colors],
+    [resolution],
   );
 
   useTickListener(symbol, live, onTick);
 
   // Reset zoom action
   const handleResetZoom = useCallback(() => {
+    currentZoomRef.current = null;
     chartInstance.current?.dispatchAction({
       type: 'dataZoom',
       start: 0,
