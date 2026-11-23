@@ -131,6 +131,17 @@ export class SecIngestionPipeline {
     // Parse sections
     const parsedSections = parseSecSections(text, meta.form);
 
+    // Disambiguate any duplicate sectionCodes within the document (e.g. TOC vs body)
+    const codeOccurrences = new Map<string, number>();
+    for (const sec of parsedSections) {
+      const base = sec.sectionCode;
+      const count = (codeOccurrences.get(base) ?? 0) + 1;
+      codeOccurrences.set(base, count);
+      if (count > 1) {
+        sec.sectionCode = `${base}_${count}`;
+      }
+    }
+
     // Generate chunks for each section
     const filingDateObj = new Date(meta.filingDate);
     const reportDateObj = meta.reportDate ? new Date(meta.reportDate) : null;
@@ -142,11 +153,12 @@ export class SecIngestionPipeline {
     }
 
     const sectionsWithChunks: SectionWithChunks[] = [];
+    const seenChunkIds = new Set<string>();
     let totalChunkCount = 0;
 
     for (const sec of parsedSections) {
       const sectionId = `${docId}-${sec.sectionCode}`;
-      const chunks = chunkSection({
+      const rawChunks = chunkSection({
         documentId: docId,
         sectionId,
         symbol: meta.symbol,
@@ -160,12 +172,19 @@ export class SecIngestionPipeline {
         content: sec.content,
       });
 
+      // Guarantee chunk ID uniqueness across the document
+      const uniqueChunks = rawChunks.filter((c) => {
+        if (seenChunkIds.has(c.id)) return false;
+        seenChunkIds.add(c.id);
+        return true;
+      });
+
       sectionsWithChunks.push({
         section: sec,
         sectionId,
-        chunks,
+        chunks: uniqueChunks,
       });
-      totalChunkCount += chunks.length;
+      totalChunkCount += uniqueChunks.length;
     }
 
     // Persist to database in transaction (delete existing if force)
