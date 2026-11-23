@@ -27,6 +27,77 @@ test.describe('ECharts Trading Terminal', () => {
     await expect(page.getByTitle('Fullscreen')).toBeVisible();
   });
 
+  test('removes duplicate legacy chart-type selector in ECharts mode', async ({ page }) => {
+    await openStock(page);
+
+    // Legacy selector with aria-label="Chart type" should NOT be visible
+    const legacySelector = page.locator('div[role=group][aria-label="Chart type"]');
+    await expect(legacySelector).not.toBeVisible();
+
+    // Only the ECharts toolbar style switcher should be present
+    const terminalStyleSelector = page.locator('div[role=group][aria-label="Chart style"]');
+    await expect(terminalStyleSelector).toBeVisible();
+    await expect(terminalStyleSelector.getByRole('button', { name: 'Candles' })).toBeVisible();
+    await expect(terminalStyleSelector.getByRole('button', { name: 'Line' })).toBeVisible();
+    await expect(terminalStyleSelector.getByRole('button', { name: 'Area' })).toBeVisible();
+  });
+
+  test('preserves legacy chart-type selector when fallback engine is lightweight', async ({ page }) => {
+    test.skip(isPhone(page), 'legacy chart-type selector is desktop only');
+    await openStock(page);
+
+    // Switch to Lightweight Charts fallback
+    await page.evaluate(() => {
+      localStorage.setItem('tm_chart_engine', 'lightweight');
+    });
+    await page.reload();
+
+    const legacySelector = page.locator('div[role=group][aria-label="Chart type"]');
+    await expect(legacySelector).toBeVisible();
+    await expect(legacySelector.getByRole('button', { name: 'Line' })).toBeVisible();
+    await expect(legacySelector.getByRole('button', { name: 'Candles' })).toBeVisible();
+
+    // Clean up
+    await page.evaluate(() => {
+      localStorage.removeItem('tm_chart_engine');
+    });
+  });
+
+  test('localizes chart toolbar controls to Thai when switching language', async ({ page }) => {
+    test.skip(isPhone(page), 'toolbar interaction');
+    await openStock(page);
+
+    // Switch to Thai via language toggle
+    const thBtn = page.getByRole('button', { name: 'TH', exact: true });
+    await thBtn.click();
+
+    // Verify Thai localized toolbar controls
+    const thStyleGroup = page.locator('div[role=group][aria-label="รูปแบบกราฟ"]');
+    await expect(thStyleGroup).toBeVisible();
+    await expect(thStyleGroup.getByRole('button', { name: 'แท่งเทียน' })).toBeVisible();
+    await expect(thStyleGroup.getByRole('button', { name: 'เส้น' })).toBeVisible();
+    await expect(thStyleGroup.getByRole('button', { name: 'พื้นที่' })).toBeVisible();
+
+    const indBtn = page.getByRole('button', { name: 'อินดิเคเตอร์' });
+    await expect(indBtn).toBeVisible();
+    await expect(page.getByRole('button', { name: 'วาด' })).toBeVisible();
+    await expect(page.getByTitle('รีเซ็ตการซูม / จัดพอดีข้อมูล')).toBeVisible();
+    await expect(page.getByTitle('ส่งออก PNG')).toBeVisible();
+    await expect(page.getByTitle('เต็มหน้าจอ')).toBeVisible();
+
+    // Verify Indicators dropdown localization
+    await indBtn.click();
+    await expect(page.getByText('อินดิเคเตอร์บนกราฟหลัก')).toBeVisible();
+    await expect(page.getByText('อินดิเคเตอร์ด้านล่าง')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ไม่มี' })).toBeVisible();
+    await indBtn.click();
+
+    // Switch back to English
+    const enBtn = page.getByRole('button', { name: 'EN', exact: true });
+    await enBtn.click();
+    await expect(page.locator('div[role=group][aria-label="Chart style"]')).toBeVisible();
+  });
+
   test('switches chart types among Candles, Line, and Area', async ({ page }) => {
     await openStock(page);
 

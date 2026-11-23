@@ -36,7 +36,8 @@ describe('MemoryWatchlistStore', () => {
 /** Isolated SQLite DB built from the real migrations (incl. the order/group backfill). */
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'tm-watchlist-'));
-const db = new PrismaClient({ datasources: { db: { url: `file:${join(dir, 'test.db').replace(/\\/g, '/')}` } } });
+const testDbUrl = `file:${join(dir, 'test.db').replace(/\\/g, '/')}`;
+const db = new PrismaClient({ datasourceUrl: testDbUrl });
 
 beforeAll(async () => {
   const migrations = join(here, '../../prisma/migrations');

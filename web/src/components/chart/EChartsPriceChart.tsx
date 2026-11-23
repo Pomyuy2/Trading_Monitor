@@ -45,6 +45,7 @@ interface Props {
   candles: Candle[];
   resolution: Resolution;
   type: 'line' | 'candles' | 'area';
+  onChangeType?: (type: 'line' | 'candles' | 'area') => void;
   live: boolean;
   compares?: CompareSeries[];
   zones?: Zone[];
@@ -116,6 +117,7 @@ export function EChartsPriceChart({
   candles: initialCandles,
   resolution,
   type: initialType,
+  onChangeType,
   live,
   compares = NONE_C,
   zones = NONE_Z,
@@ -147,6 +149,13 @@ export function EChartsPriceChart({
     setCandles(initialCandles);
   }, [initialCandles, symbol, resolution]);
 
+  // Sync initial chart type when prop changes
+  useEffect(() => {
+    if (initialType && initialType !== chartType) {
+      setChartType(initialType as ExtendedChartType);
+    }
+  }, [initialType]);
+
   // Load user chart preferences from localStorage
   useEffect(() => {
     try {
@@ -155,6 +164,7 @@ export function EChartsPriceChart({
         const parsed = JSON.parse(saved);
         if (parsed.chartType && ['candles', 'line', 'area'].includes(parsed.chartType)) {
           setChartType(parsed.chartType);
+          onChangeType?.(parsed.chartType);
         }
         if (Array.isArray(parsed.activeOverlays)) {
           setActiveOverlays(parsed.activeOverlays);
@@ -166,7 +176,7 @@ export function EChartsPriceChart({
     } catch {
       // Ignore localStorage errors
     }
-  }, []);
+  }, [onChangeType]);
 
   // Save preferences
   const savePrefs = useCallback(
@@ -206,8 +216,9 @@ export function EChartsPriceChart({
     (type: ExtendedChartType) => {
       setChartType(type);
       savePrefs(type, activeOverlays, activePanel);
+      onChangeType?.(type);
     },
-    [activeOverlays, activePanel, savePrefs],
+    [activeOverlays, activePanel, savePrefs, onChangeType],
   );
 
   // Corporate events map by bar time

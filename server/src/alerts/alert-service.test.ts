@@ -11,7 +11,8 @@ import { AlertService } from './alert-service.js';
 /** Isolated SQLite DB built from the real migrations — the dev database is never touched. */
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'tm-alerts-'));
-const db = new PrismaClient({ datasources: { db: { url: `file:${join(dir, 'test.db').replace(/\\/g, '/')}` } } });
+const testDbUrl = `file:${join(dir, 'test.db').replace(/\\/g, '/')}`;
+const db = new PrismaClient({ datasourceUrl: testDbUrl });
 
 let price = 100;
 const market = { quote: async () => ({ price }) } as unknown as MarketService;

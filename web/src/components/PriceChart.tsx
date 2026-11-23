@@ -1,13 +1,15 @@
 'use client';
 
 import type { Candle, ChartLine, DividendEvent, EarningsReport, Resolution } from '@tm/shared';
-import { useEffect, useState } from 'react';
 import type { Zone } from './level-zones';
 import { LightweightPriceChart } from './LightweightPriceChart';
 import { EChartsPriceChart } from './chart/EChartsPriceChart';
+import { useChartEngine, type ChartEngine } from '@/lib/chart-engine';
 
 export type ChartType = 'line' | 'candles' | 'area';
 export type { ChartLine };
+export type { ChartEngine };
+export { useChartEngine };
 
 export interface CompareSeries {
   symbol: string;
@@ -15,13 +17,12 @@ export interface CompareSeries {
   color: string;
 }
 
-export type ChartEngine = 'echarts' | 'lightweight';
-
 export interface PriceChartProps {
   symbol: string;
   candles: Candle[];
   resolution: Resolution;
   type: ChartType;
+  onChangeType?: (type: ChartType) => void;
   live: boolean;
   compares?: CompareSeries[];
   zones?: Zone[];
@@ -35,26 +36,8 @@ export interface PriceChartProps {
   engine?: ChartEngine;
 }
 
-const DEFAULT_ENGINE: ChartEngine =
-  (process.env.NEXT_PUBLIC_CHART_ENGINE as ChartEngine) || 'echarts';
-
 export function PriceChart(props: PriceChartProps) {
-  const [selectedEngine, setSelectedEngine] = useState<ChartEngine>(props.engine || DEFAULT_ENGINE);
-
-  useEffect(() => {
-    if (props.engine) {
-      setSelectedEngine(props.engine);
-      return;
-    }
-    try {
-      const stored = localStorage.getItem('tm_chart_engine') as ChartEngine | null;
-      if (stored === 'echarts' || stored === 'lightweight') {
-        setSelectedEngine(stored);
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [props.engine]);
+  const selectedEngine = useChartEngine(props.engine);
 
   if (selectedEngine === 'lightweight') {
     return (

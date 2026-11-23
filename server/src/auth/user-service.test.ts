@@ -10,7 +10,8 @@ import { decryptEmail } from './crypto.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'tm-users-'));
-const db = new PrismaClient({ datasources: { db: { url: `file:${join(dir, 'test.db').replace(/\\/g, '/')}` } } });
+const testDbUrl = `file:${join(dir, 'test.db').replace(/\\/g, '/')}`;
+const db = new PrismaClient({ datasourceUrl: testDbUrl });
 
 beforeAll(async () => {
   const migrations = join(here, '../../prisma/migrations');

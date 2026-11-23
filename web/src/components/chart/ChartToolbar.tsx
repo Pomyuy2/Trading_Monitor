@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { cx } from '../ui';
 import {
   OVERLAY_CONFIGS,
@@ -45,6 +46,7 @@ export function ChartToolbar({
   onClearDrawings,
   hasDrawings,
 }: Props) {
+  const t = useTranslations('chart.terminal');
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [drawOpen, setDrawOpen] = useState(false);
   const indMenuRef = useRef<HTMLDivElement>(null);
@@ -65,25 +67,29 @@ export function ChartToolbar({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-border bg-panel-2/60 text-xs">
+    <div
+      role="toolbar"
+      aria-label={t('toolbarLabel')}
+      className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-border bg-panel-2/60 text-xs"
+    >
       {/* Chart Type Selector */}
-      <div role="group" aria-label="Chart style" className="flex rounded-md border border-border bg-panel p-0.5">
-        {(['candles', 'line', 'area'] as const).map((t) => (
+      <div role="group" aria-label={t('styleLabel')} className="flex rounded-md border border-border bg-panel p-0.5">
+        {(['candles', 'line', 'area'] as const).map((mode) => (
           <button
-            key={t}
+            key={mode}
             type="button"
-            aria-pressed={chartType === t}
-            onClick={() => onChangeChartType(t)}
-            disabled={comparing && t === 'candles'}
+            aria-pressed={chartType === mode}
+            onClick={() => onChangeChartType(mode)}
+            disabled={comparing && mode === 'candles'}
             className={cx(
               'min-h-8 rounded px-2.5 font-medium transition-colors disabled:opacity-40',
-              chartType === t
+              chartType === mode
                 ? 'bg-panel-2 text-text shadow-sm'
                 : 'text-muted hover:text-text',
             )}
-            title={t.charAt(0).toUpperCase() + t.slice(1)}
+            title={t(mode)}
           >
-            {t === 'candles' ? 'Candles' : t === 'line' ? 'Line' : 'Area'}
+            {t(mode)}
           </button>
         ))}
       </div>
@@ -95,7 +101,7 @@ export function ChartToolbar({
         <button
           type="button"
           aria-expanded={indicatorsOpen}
-          aria-label="Technical Indicators"
+          aria-label={t('indicatorsLabel')}
           onClick={() => setIndicatorsOpen((prev) => !prev)}
           className={cx(
             'min-h-8 inline-flex items-center gap-1.5 rounded-md border px-2.5 font-medium transition-colors',
@@ -107,7 +113,7 @@ export function ChartToolbar({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
           </svg>
-          <span>Indicators</span>
+          <span>{t('indicators')}</span>
           {(activeOverlays.length > 0 || activePanel != null) && (
             <span className="flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-panel">
               {activeOverlays.length + (activePanel ? 1 : 0)}
@@ -118,11 +124,11 @@ export function ChartToolbar({
         {indicatorsOpen && (
           <div
             role="dialog"
-            aria-label="Indicators Menu"
+            aria-label={t('indicatorsMenu')}
             className="absolute left-0 top-full z-30 mt-1 w-64 rounded-lg border border-border bg-panel p-2 shadow-xl backdrop-blur-md"
           >
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted px-1">
-              Overlays (Main Chart)
+              {t('overlaysTitle')}
             </div>
             <div className="space-y-0.5">
               {(Object.keys(OVERLAY_CONFIGS) as OverlayIndicatorKey[]).map((k) => {
@@ -151,7 +157,7 @@ export function ChartToolbar({
             <div className="my-2 border-t border-border" />
 
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted px-1">
-              Sub-Panels (Bottom)
+              {t('subPanelsTitle')}
             </div>
             <div className="space-y-0.5">
               <button
@@ -162,7 +168,7 @@ export function ChartToolbar({
                   activePanel === null ? 'bg-panel-2 text-text font-medium' : 'text-muted hover:bg-panel-2/50 hover:text-text',
                 )}
               >
-                <span>None</span>
+                <span>{t('none')}</span>
                 {activePanel === null && <span className="text-accent text-[11px]">✓</span>}
               </button>
               {(Object.keys(PANEL_CONFIGS) as PanelIndicatorKey[]).map((k) => {
@@ -197,20 +203,20 @@ export function ChartToolbar({
           <button
             type="button"
             aria-expanded={drawOpen}
-            aria-label="Drawings"
+            aria-label={t('drawingsLabel')}
             onClick={() => setDrawOpen((prev) => !prev)}
             className="min-h-8 inline-flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 font-medium text-muted hover:text-text transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
-            <span>Draw</span>
+            <span>{t('draw')}</span>
           </button>
 
           {drawOpen && (
             <div
               role="dialog"
-              aria-label="Drawings Menu"
+              aria-label={t('drawingsMenu')}
               className="absolute left-0 top-full z-30 mt-1 w-48 rounded-lg border border-border bg-panel p-1.5 shadow-xl backdrop-blur-md"
             >
               <button
@@ -222,7 +228,7 @@ export function ChartToolbar({
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-text"
               >
                 <span className="w-3 border-t-2 border-dashed border-accent" />
-                Horizontal Line
+                {t('horizontalLine')}
               </button>
               <button
                 type="button"
@@ -233,7 +239,7 @@ export function ChartToolbar({
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-text"
               >
                 <span className="w-3 -rotate-45 border-t-2 border-accent" />
-                Trendline
+                {t('trendline')}
               </button>
               <button
                 type="button"
@@ -244,7 +250,7 @@ export function ChartToolbar({
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-text"
               >
                 <span className="size-3 border border-dashed border-accent" />
-                Price Range
+                {t('priceRange')}
               </button>
               {hasDrawings && onClearDrawings && (
                 <>
@@ -257,7 +263,7 @@ export function ChartToolbar({
                     }}
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-down hover:bg-down/10"
                   >
-                    Clear All
+                    {t('clearAll')}
                   </button>
                 </>
               )}
@@ -272,8 +278,8 @@ export function ChartToolbar({
         <button
           type="button"
           onClick={onResetZoom}
-          aria-label="Reset zoom"
-          title="Reset Zoom / Fit Data"
+          aria-label={t('resetZoom')}
+          title={t('resetZoomTitle')}
           className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-panel text-muted hover:text-text transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -285,8 +291,8 @@ export function ChartToolbar({
         <button
           type="button"
           onClick={onExportPng}
-          aria-label="Export chart as PNG"
-          title="Export PNG"
+          aria-label={t('exportPng')}
+          title={t('exportPngTitle')}
           className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-panel text-muted hover:text-text transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -298,8 +304,8 @@ export function ChartToolbar({
         <button
           type="button"
           onClick={onToggleFullscreen}
-          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          aria-label={isFullscreen ? t('exitFullscreen') : t('enterFullscreen')}
+          title={isFullscreen ? t('exitFullscreenTitle') : t('fullscreen')}
           className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-panel text-muted hover:text-text transition-colors"
         >
           {isFullscreen ? (

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import { useCandles, useEvents, useLevels } from '@/lib/api';
+import { useChartEngine } from '@/lib/chart-engine';
 import { fmtSignedPct } from '@/lib/format';
 import { useTheme } from '@/lib/prefs';
 import { XIcon } from './icons';
@@ -51,7 +52,9 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
   const t = useTranslations('chart');
   const lang = useLang();
   const theme = useTheme();
-  const [type, setType] = useState<ChartType>('line');
+  const engine = useChartEngine();
+  const isLightweight = engine === 'lightweight';
+  const [type, setType] = useState<ChartType>('candles');
   const { data, error, isLoading, isValidating, mutate } = useCandles(symbol, range);
   const c1 = useCandles(compares[0] ?? null, range);
   const c2 = useCandles(compares[1] ?? null, range);
@@ -126,20 +129,22 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
             </button>
           ))}
         </div>
-        <div role="group" aria-label={t('chartType')} className="hidden rounded-md border border-border p-0.5 lg:flex">
-          {(['line', 'candles'] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={type === k}
-              onClick={() => setType(k)}
-              disabled={comparing && k === 'candles'}
-              className={cx('min-h-10 rounded px-3 text-xs font-medium disabled:opacity-40', type === k ? 'bg-panel-2 text-text' : 'text-muted hover:text-text')}
-            >
-              {t(k)}
-            </button>
-          ))}
-        </div>
+        {isLightweight && (
+          <div role="group" aria-label={t('chartType')} className="hidden rounded-md border border-border p-0.5 lg:flex">
+            {(['line', 'candles'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={type === k}
+                onClick={() => setType(k)}
+                disabled={comparing && k === 'candles'}
+                className={cx('min-h-10 rounded px-3 text-xs font-medium disabled:opacity-40', type === k ? 'bg-panel-2 text-text' : 'text-muted hover:text-text')}
+              >
+                {t(k)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="order-0 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 lg:order-none">
@@ -199,6 +204,7 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
             candles={candles}
             resolution={series.resolution}
             type={type}
+            onChangeType={setType}
             live={streaming && quote?.marketState === 'open'}
             compares={compareSeries}
             zones={zones}
@@ -207,6 +213,7 @@ export function ChartCard({ symbol, range, onRange, quote, streaming, compares, 
             theme={theme}
             currency={quote?.currency ?? 'USD'}
             ariaLabel={ariaLabel}
+            engine={engine}
           />
         ) : null}
         {isValidating && series && series.range !== range && (
