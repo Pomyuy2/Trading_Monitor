@@ -71,12 +71,17 @@ const portfolio = new PortfolioService(db);
 const conversationService = new ConversationService(db);
 const researchAgentV1 =
   env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
-    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: false })
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: false, agentVersion: 'v1' })
     : null;
-const researchAgentV2 =
+const researchAgentV21 =
   env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
-    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: true })
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: true, agentVersion: 'v2.1', enablePlanning: false, enableVerification: false })
     : null;
+const researchAgentV22 =
+  env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL
+    ? new InvestmentResearchAgent(env.AI_BASE_URL, env.AI_API_KEY, env.AI_MODEL, log, { enableFinancialRag: true, agentVersion: 'v2.2', enablePlanning: true, enableVerification: true })
+    : null;
+const researchAgentV2 = researchAgentV22;
 const defaultAdminId = await users.getDefaultUserId();
 await watchlist.init(defaultAdminId);
 
@@ -318,7 +323,7 @@ const askBodySchema = z.object({
   pageSymbol: z.string().max(15).optional(),
   question: z.string().min(1).max(1000),
   lang: z.enum(['en', 'th']).optional().default('en'),
-  agentVersion: z.enum(['v1', 'v2']).optional(),
+  agentVersion: z.enum(['v1', 'v2', 'v2.1', 'v2.2']).optional(),
   context: askSymbolList,
   contextMode: z.enum(['global', 'stock', 'portfolio']).optional(),
   contextRef: z.string().max(50).optional().nullable(),
@@ -335,14 +340,14 @@ const askBodySchema = z.object({
 
 function resolveResearchAgent(
   req: { userId?: string; userEmail?: string },
-  requestedVersion: 'v1' | 'v2' | undefined,
-): { agent: InvestmentResearchAgent | null; version: 'v1' | 'v2' } {
+  requestedVersion: 'v1' | 'v2' | 'v2.1' | 'v2.2' | undefined,
+): { agent: InvestmentResearchAgent | null; version: 'v1' | 'v2' | 'v2.1' | 'v2.2' } {
   // Production default is strictly V1
   if (!requestedVersion || requestedVersion === 'v1') {
     return { agent: researchAgentV1, version: 'v1' };
   }
 
-  // V2 is opt-in beta and requires authorization
+  // V2 / V2.1 / V2.2 is opt-in beta and requires authorization
   // Server-side enforcement: unauthenticated users cannot access V2
   const isAuthenticated = Boolean(req.userId && req.userId !== 'default-user');
   if (!isAuthenticated) {
@@ -360,7 +365,11 @@ function resolveResearchAgent(
     }
   }
 
-  return { agent: researchAgentV2 ?? researchAgentV1, version: 'v2' };
+  if (requestedVersion === 'v2.1') {
+    return { agent: researchAgentV21 ?? researchAgentV1, version: 'v2.1' };
+  }
+
+  return { agent: researchAgentV22 ?? researchAgentV21 ?? researchAgentV1, version: requestedVersion === 'v2.2' ? 'v2.2' : 'v2' };
 }
 
 function getDemoAnalysis(

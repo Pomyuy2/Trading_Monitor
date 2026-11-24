@@ -1,0 +1,1158 @@
+{
+  "timestamp": "2026-11-24T02:19:53.405Z",
+  "compareMode": "v21_v22",
+  "retrievalAggregates": {
+    "recallAt1": 0.83,
+    "recallAt3": 0.83,
+    "recallAt5": 1,
+    "mrr": 0.87
+  },
+  "aggregateBaseline": {
+    "agentVersion": "v2.1",
+    "totalQuestions": 6,
+    "byCategory": {
+      "financial_statement_interpretation": {
+        "count": 4,
+        "avgFactualScore": 0.72,
+        "avgCitationFaithfulness": 1,
+        "avgLatencyMs": 12882,
+        "avgToolCalls": 1.8,
+        "abstentionAccuracy": 1,
+        "cutoffCompliance": 1
+      },
+      "mda_analysis": {
+        "count": 2,
+        "avgFactualScore": 0.54,
+        "avgCitationFaithfulness": 1,
+        "avgLatencyMs": 13030,
+        "avgToolCalls": 1.5,
+        "abstentionAccuracy": 1,
+        "cutoffCompliance": 1
+      }
+    },
+    "overall": {
+      "retrievalRecallAt3": 0.83,
+      "retrievalRecallAt5": 1,
+      "mrr": 0.87,
+      "avgFactualCorrectness": 0.66,
+      "avgCitationFaithfulness": 1,
+      "avgUnsupportedClaimRate": 0.34,
+      "historicalCutoffComplianceRate": 1,
+      "appropriateAbstentionRate": 1,
+      "abstentionAccuracyRate": 1,
+      "avgLatencyMs": 12931,
+      "p50LatencyMs": 13922,
+      "p90LatencyMs": 16128,
+      "avgToolCalls": 1.7,
+      "avgToolCallsPerQuery": 1.7,
+      "avgTokens": 209,
+      "totalTokensConsumed": 1256
+    }
+  },
+  "aggregateTarget": {
+    "agentVersion": "v2.2",
+    "totalQuestions": 6,
+    "byCategory": {
+      "financial_statement_interpretation": {
+        "count": 4,
+        "avgFactualScore": 0.9,
+        "avgCitationFaithfulness": 1,
+        "avgLatencyMs": 22688,
+        "avgToolCalls": 4.8,
+        "abstentionAccuracy": 1,
+        "cutoffCompliance": 1
+      },
+      "mda_analysis": {
+        "count": 2,
+        "avgFactualScore": 0.5,
+        "avgCitationFaithfulness": 1,
+        "avgLatencyMs": 9757,
+        "avgToolCalls": 1,
+        "abstentionAccuracy": 1,
+        "cutoffCompliance": 1
+      }
+    },
+    "overall": {
+      "retrievalRecallAt3": 0.83,
+      "retrievalRecallAt5": 1,
+      "mrr": 0.87,
+      "avgFactualCorrectness": 0.76,
+      "avgCitationFaithfulness": 1,
+      "avgUnsupportedClaimRate": 0.24,
+      "historicalCutoffComplianceRate": 1,
+      "appropriateAbstentionRate": 1,
+      "abstentionAccuracyRate": 1,
+      "avgLatencyMs": 18377,
+      "p50LatencyMs": 18483,
+      "p90LatencyMs": 32098,
+      "avgToolCalls": 3.5,
+      "avgToolCallsPerQuery": 3.5,
+      "avgTokens": 283,
+      "totalTokensConsumed": 1697
+    }
+  },
+  "baselineResults": [
+    {
+      "questionId": "Q01",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "### Primary Reportable Segments (FY2025)\n\nNvidia reports two primary operating segments [SEC-NVDA-10-K-2025-02-26-ITEM_7-c1]:\n1. **Compute & Networking**\n2. **Graphics**\n\nFY2025 segment revenue figures [SEC-NVDA-10-K-2025-02-26-ITEM_15-c63]:\n- **Compute & Networking**: $116,193 million (+145% vs $47,405 million in FY2024)\n- **Graphics**: $14,304 million (+5.8% vs $13,517 million in FY2024)\n- **Total**: $130,497 million (+114% vs $60,922 million in FY2024)\n\n---\n\n### Growth Drivers: Compute & Networking vs. Graphics\n\n**Compute & Networking Growth Drivers [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16]:**\n- **Data Center compute**: Grew 162% YoY. Driven by demand for Hopper computing architecture (H100/H200) across large language models (LLMs), recommendation engines, and generative AI workloads.\n- **Data Center networking**: Grew 51% YoY. Driven by Ethernet for AI adoption, specifically Spectrum-X end-to-end Ethernet platform deployments.\n- **Initial Blackwell transition**: Production shipments started late Q4 FY2025 [SEC-NVDA-10-K-2025-02-26-ITEM_7-c1].\n\n**Graphics Growth Drivers [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16]:**\n- Growth was significantly slower (+5.8% YoY).\n- Driven primarily by GeForce RTX 40 Series GPU sales into gaming and workstation markets, lacking hyperscale AI infrastructure capital expenditure tailwinds seen in Compute & Networking.",
+      "executionTimeMs": 16128,
+      "toolCallCount": 2,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 377,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c1",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.93,
+        "numericalCorrectnessScore": 0,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.06999999999999995,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 3 found (3 valid). Tools: search_financial_documents, search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q02",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "In Apple's FY2025 Form 10-K (Item 7, MD&A):\n\n- **Services gross margin:** 75.4% [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5]\n- **Products gross margin:** 36.8% [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5]\n- **Total company gross margin:** 46.9% [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5]\n\nServices margin was 38.6 percentage points higher than Products margin. Services gross profit totaled $82,314 million on $109,158 million revenue; Products gross profit totaled $112,887 million on $307,003 million revenue [SEC-AAPL-10-K-2025-10-31-ITEM_7-c4] [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5].",
+      "executionTimeMs": 10405,
+      "toolCallCount": 1,
+      "toolsUsed": [
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 166,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-AAPL-10-K-2026-11-03-ITEM_7-c5",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.85,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.15000000000000002,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 2 found (2 valid). Tools: search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q03",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "Microsoft FY2025 Form 10-K reportable segment operating income [SEC-MSFT-10-K-2025-07-30-ITEM_7-c10, SEC-MSFT-10-K-2025-07-30-ITEM_7-c11, SEC-MSFT-10-K-2025-07-30-ITEM_8-c61]:\n\n- **Productivity and Business Processes**: $69,773 million (54.3% of total) [SEC-MSFT-10-K-2025-07-30-ITEM_7-c10]\n- **Intelligent Cloud**: $44,589 million (34.7% of total) [SEC-MSFT-10-K-2025-07-30-ITEM_7-c10]\n- **More Personal Computing**: $14,166 million (11.0% of total) [SEC-MSFT-10-K-2025-07-30-ITEM_7-c11]\n\n**Total Operating Income**: $128,528 million [SEC-MSFT-10-K-2025-07-30-ITEM_7-c11, SEC-MSFT-10-K-2025-07-30-ITEM_8-c61].",
+      "executionTimeMs": 13922,
+      "toolCallCount": 2,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 202,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-MSFT-10-K-2026-07-29-ITEM_8-c61",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 1,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 3 found (3 valid). Tools: search_financial_documents, search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q06",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "According to Microsoft's Consolidated Statements of Cash Flows in its FY2025 Form 10-K (filed July 30, 2025), cash expended on property and equipment was:\n\n* **Additions to property and equipment (FY2025):** **$64,551 million** ($64.551 billion) [SEC-MSFT-10-K-2025-07-30-ITEM_8-c3].\n\nFor context, prior years reported in same statement:\n* **FY2024:** $44,477 million [SEC-MSFT-10-K-2025-07-30-ITEM_8-c3]\n* **FY2023:** $28,107 million [SEC-MSFT-10-K-2025-07-30-ITEM_8-c3]",
+      "executionTimeMs": 11071,
+      "toolCallCount": 2,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 154,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-MSFT-10-Q-2026-04-29-PART_I_ITEM_1-c6",
+        "recallAt3": false,
+        "recallAt5": true,
+        "reciprocalRank": 0.2
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.1,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.9,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 1 found (1 valid). Tools: search_financial_documents, search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q07",
+      "category": "mda_analysis",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "In Nvidia's FY2025 Form 10-K (Item 7, MD&A), gross margin increased to 75.0% from 72.7% in FY2024 (up 2.3 percentage points) [SEC-NVDA-10-K-2025-02-26-ITEM_7-c8, SEC-NVDA-10-K-2025-02-26-ITEM_7-c18].\n\nManagement cited:\n\n1. **Higher mix of Data Center revenue**: Primary driver of gross margin expansion across FY2025 [SEC-NVDA-10-K-2025-02-26-ITEM_7-c8, SEC-NVDA-10-K-2025-02-26-ITEM_7-c18]. Data Center grew 142% year-on-year, driven by demand for the Hopper architecture accelerated computing platform [SEC-NVDA-10-K-2025-02-26-ITEM_7-c8].\n2. **Lower relative drag from net inventory provisions**: Net effect of inventory provisions, excess purchase obligations, and reserve releases was unfavorable impact of 2.3% on gross margin in FY2025 versus 2.7% unfavorable impact in FY2024 (40 bps relative margin benefit) [SEC-NVDA-10-K-2025-02-26-ITEM_7-c18].",
+      "executionTimeMs": 14860,
+      "toolCallCount": 1,
+      "toolsUsed": [
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 242,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c18",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.93,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.06999999999999995,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 2 found (2 valid). Tools: search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q08",
+      "category": "mda_analysis",
+      "agentVersion": "v2.1",
+      "success": true,
+      "answer": "Apple FY2025 Form 10-K Item 7 (MD&A) report:\n\nGreater China net sales dropped 4% from $66,952M (FY2024) to $64,377M (FY2025) [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].\n\nManagement explanation:\n- Decrease driver: Lower net sales of iPhone [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].\n- Partial offset: Higher net sales of Mac [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].",
+      "executionTimeMs": 11200,
+      "toolCallCount": 2,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 115,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-AAPL-10-K-2024-11-01-ITEM_1-c3",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.15,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.85,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 1 found (1 valid). Tools: search_financial_documents, search_financial_documents"
+      }
+    }
+  ],
+  "targetResults": [
+    {
+      "questionId": "Q01",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "### FY2025 Reportable Revenue Segments\n\nNvidia reports two primary operating segments in Note 16 and Item 7 of FY2025 Form 10-K [SEC-NVDA-10-K-2025-02-26-ITEM_7-c1, SEC-NVDA-10-K-2025-02-26-ITEM_15-c62]:\n\n1. **Compute & Networking**:\n   - **FY2025 Revenue**: $116,193 million (vs. $47,405 million in FY2024; +145% YoY) [SEC-NVDA-10-K-2025-02-26-ITEM_15-c63].\n   - **FY2025 Operating Income**: $82,875 million (vs. $32,016 million in FY2024; +159% YoY) [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16].\n   - **Scope**: Data Center accelerated computing platforms, AI solutions/software, networking (InfiniBand, Ethernet/Spectrum-X), automotive AV/EV solutions, Jetson robotics, DGX Cloud [SEC-NVDA-10-K-2025-02-26-ITEM_15-c62].\n\n2. **Graphics**:\n   - **FY2025 Revenue**: $14,304 million (vs. $13,517 million in FY2024; +5.8% YoY) [SEC-NVDA-10-K-2025-02-26-ITEM_15-c63].\n   - **FY2025 Operating Income**: $5,085 million (vs. $5,846 million in FY2024; -13% YoY) [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16].\n   - **Scope**: GeForce GPUs for gaming/PCs, GeForce NOW, workstation Quadro/NVIDIA RTX GPUs, vGPU software, Omniverse Enterprise [SEC-NVDA-10-K-2025-02-26-ITEM_15-c62].\n\n---\n\n### Growth Drivers: Compute & Networking vs. Graphics\n\n- **Compute & Networking Outperformance**:\n  - **Data Center Compute**: Grew 162% YoY [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16]. Driven by demand for Hopper computing architecture used in training/inferencing large language models (LLMs), recommendation engines, and generative AI [SEC-NVDA-10-K-2025-02-26-ITEM_7-c1, SEC-NVDA-10-K-2025-02-26-ITEM_7-c16]. Production Blackwell architecture began shipping Q4 FY2025 [SEC-NVDA-10-K-2025-02-26-ITEM_7-c1].\n  - **Data Center Networking**: Grew 51% YoY [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16]. Driven by Ethernet for AI adoption, specifically Spectrum-X end-to-end platform [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16].\n  - **Operating Leverage**: Operating income grew 159% to $82,875 million, outpacing revenue growth [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16].\n\n- **Graphics Relative Deceleration**:\n  - Revenue expanded 5.8% ($14,304 million vs. $13,517 million), driven primarily by GeForce RTX 40 Series GPU sales [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16, SEC-NVDA-10-K-2025-02-26-ITEM_15-c63].\n  - Operating income dropped 13% YoY due to a 44% increase in segment operating expenses, which offset revenue gains [SEC-NVDA-10-K-2025-02-26-ITEM_7-c16].",
+      "executionTimeMs": 32098,
+      "toolCallCount": 6,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents",
+        "calculate_financial_ratios",
+        "analyze_stock_risk",
+        "get_quote",
+        "calculate_indicators"
+      ],
+      "tokenEstimate": 636,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c1",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "plan": {
+        "planId": "plan-1795486700073-oswuz",
+        "query": "In Nvidia's FY2025 10-K, what are the primary revenue segments reported, and what drove the growth in Compute & Networking relative to Graphics?",
+        "complexity": "moderate",
+        "targetCompanies": [
+          "NVDA"
+        ],
+        "researchObjectives": [
+          "Analyze fundamental health, growth catalysts, and valuation for NVDA",
+          "Retrieve and ground findings in official SEC periodic report disclosures (Business, MD&A, Financial Notes)"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_7 (MD&A)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Retrieve official SEC 10-K/10-Q disclosures for NVDA before 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "NVDA",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for NVDA"
+          },
+          {
+            "id": "task-2",
+            "description": "Compute audited fundamental ratios, margins, and cash flow for NVDA",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "NVDA",
+            "toolHint": "calculate_financial_ratios",
+            "status": "completed",
+            "resultSummary": "Executed calculate_financial_ratios for NVDA"
+          },
+          {
+            "id": "task-3",
+            "description": "Investigate SEC Item 1A Risk Factors and analyze statistical volatility & drawdown for NVDA",
+            "priority": "medium",
+            "category": "risks",
+            "targetSymbol": "NVDA",
+            "toolHint": "analyze_stock_risk",
+            "status": "completed",
+            "resultSummary": "Executed analyze_stock_risk for NVDA"
+          }
+        ],
+        "createdAt": "2026-11-24T02:18:20.073Z"
+      },
+      "verification": {
+        "verified": true,
+        "confidenceScore": 1,
+        "citations": [
+          {
+            "citationId": "SEC-NVDA-10-K-2025-02-26-ITEM_15-c63",
+            "exists": true,
+            "filingDate": "2025-02-26",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.55,
+            "snippet": "regarding total assets on a reportable segment basis. There are no intersegment transactions. The accounting policies for segment reporting are the sa"
+          },
+          {
+            "citationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c16",
+            "exists": true,
+            "filingDate": "2025-02-26",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.63,
+            "snippet": "$ 69,575 114 %\n\nOperating Income by Reportable Segments\n\nYear Ended\nJan 26, 2025 Jan 28, 2024 $\nChange %\nChange\n\n($ in millions)\nCompute & Networking "
+          },
+          {
+            "citationId": "SEC-NVDA-10-K-2025-02-26-ITEM_15-c62",
+            "exists": true,
+            "filingDate": "2025-02-26",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.67,
+            "snippet": "our shareholders.\n\nNote 15 - Employee Retirement Plans\nWe provide tax-qualified defined contribution plans to eligible employees in the U.S. and certa"
+          },
+          {
+            "citationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c1",
+            "exists": true,
+            "filingDate": "2025-02-26",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.55,
+            "snippet": "Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations\nThe following discussion and analysis of our financial c"
+          }
+        ],
+        "validCitationCount": 4,
+        "invalidCitationCount": 0,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.93,
+        "numericalCorrectnessScore": 0,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.06999999999999995,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 4 found (4 valid). Tools: search_financial_documents, search_financial_documents, calculate_financial_ratios, analyze_stock_risk, get_quote, calculate_indicators"
+      }
+    },
+    {
+      "questionId": "Q02",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "Apple FY2025 Form 10-K Item 7 disclosure [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5]:\n\n- **Services gross margin:** 75.4% ($82,314M margin on Services)\n- **Products gross margin:** 36.8% ($112,887M margin on Products)\n- **Spread:** Services gross margin 38.6 percentage points higher than Products.\n- **Total company gross margin:** 46.9% ($195,201M total).\n\nHistorical context from filing:\n- FY2024: Services 73.9% vs Products 37.2% [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5].\n- FY2023: Services 70.8% vs Products 36.5% [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5].\n\nManagement driver notes:\n- Products GM% fell 40 bps YoY due to product mix and tariff costs, offset by favorable cost savings [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5].\n- Services GM% grew 150 bps YoY due to services mix shift, partially offset by higher infrastructure/headcount costs [SEC-AAPL-10-K-2025-10-31-ITEM_7-c5].",
+      "executionTimeMs": 24536,
+      "toolCallCount": 6,
+      "toolsUsed": [
+        "search_financial_documents",
+        "calculate_financial_ratios",
+        "calculate_valuation",
+        "analyze_stock_risk",
+        "calculate_indicators",
+        "get_quote"
+      ],
+      "tokenEstimate": 242,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-AAPL-10-K-2026-11-03-ITEM_7-c5",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "plan": {
+        "planId": "plan-1795486694381-8c2e1",
+        "query": "In Apple's FY2025 Form 10-K, what was the gross margin percentage for Services compared to Products?",
+        "complexity": "deep",
+        "targetCompanies": [
+          "AAPL"
+        ],
+        "researchObjectives": [
+          "Analyze fundamental health, growth catalysts, and valuation for AAPL",
+          "Retrieve and ground findings in official SEC periodic report disclosures (Business, MD&A, Financial Notes)"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio",
+          "freeCashFlow",
+          "operatingCashFlow",
+          "dcfFairValue",
+          "debtToEquity",
+          "currentRatio",
+          "roe",
+          "roic"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_1 (Business Overview)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Retrieve official SEC 10-K/10-Q disclosures for AAPL before 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "AAPL",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for AAPL"
+          },
+          {
+            "id": "task-2",
+            "description": "Compute audited fundamental ratios, margins, and cash flow for AAPL",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "AAPL",
+            "toolHint": "calculate_financial_ratios",
+            "status": "completed",
+            "resultSummary": "Executed calculate_financial_ratios for AAPL"
+          },
+          {
+            "id": "task-3",
+            "description": "Execute DCF valuation model with Bull/Base/Bear scenarios (WACC: 9.0%) for AAPL",
+            "priority": "medium",
+            "category": "valuation",
+            "targetSymbol": "AAPL",
+            "toolHint": "calculate_valuation",
+            "status": "completed",
+            "resultSummary": "Executed calculate_valuation for AAPL"
+          },
+          {
+            "id": "task-4",
+            "description": "Investigate SEC Item 1A Risk Factors and analyze statistical volatility & drawdown for AAPL",
+            "priority": "medium",
+            "category": "risks",
+            "targetSymbol": "AAPL",
+            "toolHint": "analyze_stock_risk",
+            "status": "completed",
+            "resultSummary": "Executed analyze_stock_risk for AAPL"
+          },
+          {
+            "id": "task-5",
+            "description": "Analyze technical indicator regime (SMA 20/50/200, RSI, MACD) for AAPL",
+            "priority": "low",
+            "category": "technicals",
+            "targetSymbol": "AAPL",
+            "toolHint": "calculate_indicators",
+            "status": "completed",
+            "resultSummary": "Executed calculate_indicators for AAPL"
+          }
+        ],
+        "createdAt": "2026-11-24T02:18:14.382Z"
+      },
+      "verification": {
+        "verified": true,
+        "confidenceScore": 1,
+        "citations": [
+          {
+            "citationId": "SEC-AAPL-10-K-2025-10-31-ITEM_7-c5",
+            "exists": true,
+            "filingDate": "2025-10-31",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.65,
+            "snippet": "in millions):\n\n2025 2024 2023\nGross margin:\nProducts $ 112,887 $ 109,633 $ 108,803\nServices 82,314 71,050 60,345\nTotal gross margin $ 195,201 $ 180,68"
+          }
+        ],
+        "validCitationCount": 1,
+        "invalidCitationCount": 0,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.85,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.15000000000000002,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 1 found (1 valid). Tools: search_financial_documents, calculate_financial_ratios, calculate_valuation, analyze_stock_risk, calculate_indicators, get_quote"
+      }
+    },
+    {
+      "questionId": "Q03",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "In Microsoft FY2025 Form 10-K (filing date: 2025-07-30), operating income by reportable segment [SEC-MSFT-10-K-2025-07-30-ITEM_7-c10], [SEC-MSFT-10-K-2025-07-30-ITEM_7-c11], [SEC-MSFT-10-K-2025-07-30-ITEM_8-c61]:\n\n- **Productivity and Business Processes:** $69,773 million (54.3% of total operating income; +17% YoY from $59,661 million).\n- **Intelligent Cloud:** $44,589 million (34.7% of total operating income; +18% YoY from $37,813 million).\n- **More Personal Computing:** $14,166 million (11.0% of total operating income; +18% YoY from $11,959 million).\n\n**Total Segment Operating Income:** $128,528 million (+17% YoY from $109,433 million) [SEC-MSFT-10-K-2025-07-30-ITEM_7-c11], [SEC-MSFT-10-K-2025-07-30-ITEM_8-c61].",
+      "executionTimeMs": 18483,
+      "toolCallCount": 4,
+      "toolsUsed": [
+        "search_financial_documents",
+        "calculate_financial_ratios",
+        "analyze_stock_risk",
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 230,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-MSFT-10-K-2026-07-29-ITEM_8-c61",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "plan": {
+        "planId": "plan-1795486746285-eg2q4",
+        "query": "In Microsoft's FY2025 Form 10-K, what were the operating income contributions of its three reportable segments (Productivity and Business Processes, Intelligent Cloud, and More Personal Computing)?",
+        "complexity": "moderate",
+        "targetCompanies": [
+          "MSFT"
+        ],
+        "researchObjectives": [
+          "Analyze fundamental health, growth catalysts, and valuation for MSFT",
+          "Retrieve and ground findings in official SEC periodic report disclosures (Business, MD&A, Financial Notes)"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_7 (MD&A)",
+          "10-K ITEM_1 (Business Overview)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Retrieve official SEC 10-K/10-Q disclosures for MSFT before 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "MSFT",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for MSFT"
+          },
+          {
+            "id": "task-2",
+            "description": "Compute audited fundamental ratios, margins, and cash flow for MSFT",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "MSFT",
+            "toolHint": "calculate_financial_ratios",
+            "status": "completed",
+            "resultSummary": "Executed calculate_financial_ratios for MSFT"
+          },
+          {
+            "id": "task-3",
+            "description": "Investigate SEC Item 1A Risk Factors and analyze statistical volatility & drawdown for MSFT",
+            "priority": "medium",
+            "category": "risks",
+            "targetSymbol": "MSFT",
+            "toolHint": "analyze_stock_risk",
+            "status": "completed",
+            "resultSummary": "Executed analyze_stock_risk for MSFT"
+          }
+        ],
+        "createdAt": "2026-11-24T02:19:06.285Z"
+      },
+      "verification": {
+        "verified": true,
+        "confidenceScore": 1,
+        "citations": [
+          {
+            "citationId": "SEC-MSFT-10-K-2025-07-30-ITEM_7-c10",
+            "exists": true,
+            "filingDate": "2025-07-30",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.67,
+            "snippet": "OF OPERATIONS\n\n(In millions, except percentages and per share amounts)\n\n2025\n\n2024\n\nPercentage\nChange\n\nRevenue\n\n$\n\n281,724\n\n$\n\n245,122\n\n15%\n\nGross mar"
+          },
+          {
+            "citationId": "SEC-MSFT-10-K-2025-07-30-ITEM_7-c11",
+            "exists": true,
+            "filingDate": "2025-07-30",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.64,
+            "snippet": "Cloud\n\nRevenue\n\n$\n\n106,265\n\n$\n\n87,464\n\n21%\n\nCost of revenue\n\n40,171\n\n29,611\n\n36%\n\nOperating expenses\n\n21,505\n\n20,040\n\n7%\n\nOperating Income\n\n$\n\n44,589\n"
+          },
+          {
+            "citationId": "SEC-MSFT-10-K-2025-07-30-ITEM_8-c61",
+            "exists": true,
+            "filingDate": "2025-07-30",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.72,
+            "snippet": "facilities services, customer service and support, and severance incurred as part of a corporate program. Each allocation is measured differently base"
+          }
+        ],
+        "validCitationCount": 3,
+        "invalidCitationCount": 0,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 1,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 3 found (3 valid). Tools: search_financial_documents, calculate_financial_ratios, analyze_stock_risk, search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q06",
+      "category": "financial_statement_interpretation",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "Microsoft Consolidated Statements of Cash Flows in FY2025 Form 10-K (Year Ended June 30, 2025):\n\n- **Additions to property and equipment (CapEx):** **$64,551 million** ($64.551 billion) [SEC-MSFT-10-K-2025-07-30-ITEM_8].\n- Prior period comparisons:\n  - FY2024: $44,477 million [SEC-MSFT-10-K-2025-07-30-ITEM_8]\n  - FY2023: $28,107 million [SEC-MSFT-10-K-2025-07-30-ITEM_8]\n- Increase FY2025 vs FY2024: +$20,074 million (+45.1%), driven primarily by cloud and AI datacenter infrastructure expansion [SEC-MSFT-10-K-2025-07-30-ITEM_7-c21].\n\n---\n### 🔍 Evidence Verification & Quality Audit\n- **Evidence Confidence Score**: 90%\n- **SEC Citations Validated**: 1 valid / 1 unindexed (Passage Match: 100%)\n- **Historical Cutoff**: 2025-12-31 (Compliant)\n\n**Research Qualifications**:\n- 1 cited SEC passage ID(s) could not be resolved in the filing index.\n",
+      "executionTimeMs": 15633,
+      "toolCallCount": 3,
+      "toolsUsed": [
+        "search_financial_documents",
+        "search_financial_documents",
+        "get_document_section"
+      ],
+      "tokenEstimate": 248,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-MSFT-10-Q-2026-04-29-PART_I_ITEM_1-c6",
+        "recallAt3": false,
+        "recallAt5": true,
+        "reciprocalRank": 0.2
+      },
+      "plan": {
+        "planId": "plan-1795486743422-94n2q",
+        "query": "According to Microsoft's Consolidated Statements of Cash Flows in its FY2025 10-K, how much cash was expended on property and equipment (CapEx)?",
+        "complexity": "moderate",
+        "targetCompanies": [
+          "MSFT"
+        ],
+        "researchObjectives": [
+          "Analyze fundamental health, growth catalysts, and valuation for MSFT",
+          "Retrieve and ground findings in official SEC periodic report disclosures (Business, MD&A, Financial Notes)"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio",
+          "freeCashFlow",
+          "operatingCashFlow",
+          "dcfFairValue"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_7 (MD&A)",
+          "10-K ITEM_1 (Business)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Retrieve official SEC 10-K/10-Q disclosures for MSFT before 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "MSFT",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for MSFT"
+          },
+          {
+            "id": "task-2",
+            "description": "Compute audited fundamental ratios, margins, and cash flow for MSFT",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "MSFT",
+            "toolHint": "calculate_financial_ratios",
+            "status": "pending"
+          },
+          {
+            "id": "task-3",
+            "description": "Investigate SEC Item 1A Risk Factors and analyze statistical volatility & drawdown for MSFT",
+            "priority": "medium",
+            "category": "risks",
+            "targetSymbol": "MSFT",
+            "toolHint": "analyze_stock_risk",
+            "status": "pending"
+          }
+        ],
+        "createdAt": "2026-11-24T02:19:03.422Z"
+      },
+      "verification": {
+        "verified": false,
+        "confidenceScore": 0.9,
+        "citations": [
+          {
+            "citationId": "SEC-MSFT-10-K-2025-07-30-ITEM_8",
+            "exists": false,
+            "cutoffCompliant": true,
+            "passageMatched": false,
+            "matchScore": 0
+          },
+          {
+            "citationId": "SEC-MSFT-10-K-2025-07-30-ITEM_7-c21",
+            "exists": true,
+            "filingDate": "2025-07-30",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.35,
+            "snippet": "these investments. Our fair value processes include controls that are designed to ensure appropriate fair values are recorded. These controls include "
+          }
+        ],
+        "validCitationCount": 1,
+        "invalidCitationCount": 1,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [
+          "1 cited SEC passage ID(s) could not be resolved in the filing index."
+        ],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.8,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.19999999999999996,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 2 found (2 valid). Tools: search_financial_documents, search_financial_documents, get_document_section"
+      }
+    },
+    {
+      "questionId": "Q07",
+      "category": "mda_analysis",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "In Nvidia's FY2025 Form 10-K (Item 7, MD&A), management stated gross margin rose to 75.0% in FY2025 from 72.7% in FY2024 [SEC-NVDA-10-K-2025-02-26-ITEM_7-c18].\n\nSpecific reasons provided:\n\n1. **Higher Data Center Revenue Mix**: Primary driver was higher mix of Data Center revenue [SEC-NVDA-10-K-2025-02-26-ITEM_7-c18].\n2. **Net Inventory Provisions Impact**: Provisions for inventory and excess purchase obligations totaled $3.7B vs $2.2B in FY2024; releases from sales of previously reserved inventory and obligation settlements were $689M vs $540M in FY2024 [SEC-NVDA-10-K-2025-02-26-ITEM_7-c18]. Net effect unfavorable by 2.3% in FY2025 versus unfavorable 2.7% in FY2024, representing 40 bps relative margin tailwind year-over-year [SEC-NVDA-10-K-2025-02-26-ITEM_7-c18].",
+      "executionTimeMs": 13522,
+      "toolCallCount": 1,
+      "toolsUsed": [
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 222,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c18",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "plan": {
+        "planId": "plan-1795486779797-tnli1",
+        "query": "In Nvidia's FY2025 MD&A, what specific reasons did management provide for the gross margin increase over FY2024?",
+        "complexity": "deep",
+        "targetCompanies": [
+          "NVDA",
+          "MD"
+        ],
+        "researchObjectives": [
+          "Compare financial performance, valuation, and competitive advantage across NVDA, MD"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio",
+          "freeCashFlow",
+          "operatingCashFlow",
+          "dcfFairValue",
+          "debtToEquity",
+          "currentRatio",
+          "roe",
+          "roic"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_7 (MD&A)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Verify SEC document coverage and retrieve business & financial drivers for NVDA as of 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "NVDA",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for NVDA"
+          },
+          {
+            "id": "task-2",
+            "description": "Fetch fundamental metrics, growth rates, and financial ratios for NVDA",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "NVDA",
+            "toolHint": "calculate_financial_ratios",
+            "status": "pending"
+          },
+          {
+            "id": "task-3",
+            "description": "Verify SEC document coverage and retrieve business & financial drivers for MD as of 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "MD",
+            "toolHint": "search_financial_documents",
+            "status": "pending"
+          },
+          {
+            "id": "task-4",
+            "description": "Fetch fundamental metrics, growth rates, and financial ratios for MD",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "MD",
+            "toolHint": "calculate_financial_ratios",
+            "status": "pending"
+          },
+          {
+            "id": "task-5",
+            "description": "Perform comparative valuation and peer benchmarking across NVDA, MD",
+            "priority": "medium",
+            "category": "comparison",
+            "toolHint": "compare_stocks",
+            "status": "pending"
+          }
+        ],
+        "createdAt": "2026-11-24T02:19:39.798Z"
+      },
+      "verification": {
+        "verified": true,
+        "confidenceScore": 1,
+        "citations": [
+          {
+            "citationId": "SEC-NVDA-10-K-2025-02-26-ITEM_7-c18",
+            "exists": true,
+            "filingDate": "2025-02-26",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.56,
+            "snippet": "segment, are presented in the following table:\n\nYear Ended\nJan 26, 2025 Jan 28, 2024\n\nDirect Customer A 12 % *\nDirect Customer B 11 % 13 %\nDirect Cust"
+          }
+        ],
+        "validCitationCount": 1,
+        "invalidCitationCount": 0,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.85,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.15000000000000002,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 1 found (1 valid). Tools: search_financial_documents"
+      }
+    },
+    {
+      "questionId": "Q08",
+      "category": "mda_analysis",
+      "agentVersion": "v2.2",
+      "success": true,
+      "answer": "In Apple FY2025 Form 10-K Item 7 (MD&A), Greater China net sales dropped 4% to $64,377 million from $66,952 million in FY2024 [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].\n\nManagement explanation:\n- Decrease driven primarily by lower net sales of iPhone [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].\n- Partially offset by higher net sales of Mac [SEC-AAPL-10-K-2025-10-31-ITEM_7-c3].",
+      "executionTimeMs": 5992,
+      "toolCallCount": 1,
+      "toolsUsed": [
+        "search_financial_documents"
+      ],
+      "tokenEstimate": 119,
+      "retrieval": {
+        "chunksRetrieved": 5,
+        "topChunkCitationId": "SEC-AAPL-10-K-2024-11-01-ITEM_1-c3",
+        "recallAt3": true,
+        "recallAt5": true,
+        "reciprocalRank": 1
+      },
+      "plan": {
+        "planId": "plan-1795486776142-s5u1q",
+        "query": "In Apple's FY2025 10-K MD&A, how did management explain the change in net sales in the Greater China segment?",
+        "complexity": "deep",
+        "targetCompanies": [
+          "AAPL",
+          "MD"
+        ],
+        "researchObjectives": [
+          "Compare financial performance, valuation, and competitive advantage across AAPL, MD",
+          "Retrieve and ground findings in official SEC periodic report disclosures (Business, MD&A, Financial Notes)"
+        ],
+        "requiredFinancialMetrics": [
+          "revenueGrowthYoY",
+          "netMargin",
+          "peRatio",
+          "freeCashFlow",
+          "operatingCashFlow",
+          "dcfFairValue",
+          "debtToEquity",
+          "currentRatio",
+          "roe",
+          "roic"
+        ],
+        "requiredSecEvidence": [
+          "10-K ITEM_7 (MD&A)",
+          "Filings accepted on or before 2025-12-31"
+        ],
+        "riskFactorsToInvestigate": [
+          "Customer and supplier concentration risk",
+          "Macroeconomic and interest rate sensitivity",
+          "Competitive threats and technological displacement",
+          "Regulatory scrutiny and export control restrictions"
+        ],
+        "valuationAssumptions": {
+          "wacc": 0.09,
+          "growthRate5Y": 0.12,
+          "terminalGrowthRate": 0.025,
+          "notes": "Standard institutional DCF base assumptions calibrated by risk tolerance"
+        },
+        "historicalTimeCutoff": "2025-12-31",
+        "missingOrUncertainInputs": [],
+        "tasks": [
+          {
+            "id": "task-1",
+            "description": "Verify SEC document coverage and retrieve business & financial drivers for AAPL as of 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "AAPL",
+            "toolHint": "search_financial_documents",
+            "status": "completed",
+            "resultSummary": "Executed search_financial_documents for AAPL"
+          },
+          {
+            "id": "task-2",
+            "description": "Fetch fundamental metrics, growth rates, and financial ratios for AAPL",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "AAPL",
+            "toolHint": "calculate_financial_ratios",
+            "status": "pending"
+          },
+          {
+            "id": "task-3",
+            "description": "Verify SEC document coverage and retrieve business & financial drivers for MD as of 2025-12-31",
+            "priority": "high",
+            "category": "sec_filings",
+            "targetSymbol": "MD",
+            "toolHint": "search_financial_documents",
+            "status": "pending"
+          },
+          {
+            "id": "task-4",
+            "description": "Fetch fundamental metrics, growth rates, and financial ratios for MD",
+            "priority": "high",
+            "category": "fundamentals",
+            "targetSymbol": "MD",
+            "toolHint": "calculate_financial_ratios",
+            "status": "pending"
+          },
+          {
+            "id": "task-5",
+            "description": "Perform comparative valuation and peer benchmarking across AAPL, MD",
+            "priority": "medium",
+            "category": "comparison",
+            "toolHint": "compare_stocks",
+            "status": "pending"
+          }
+        ],
+        "createdAt": "2026-11-24T02:19:36.142Z"
+      },
+      "verification": {
+        "verified": true,
+        "confidenceScore": 1,
+        "citations": [
+          {
+            "citationId": "SEC-AAPL-10-K-2025-10-31-ITEM_7-c3",
+            "exists": true,
+            "filingDate": "2025-10-31",
+            "cutoffCompliant": true,
+            "passageMatched": true,
+            "matchScore": 0.59,
+            "snippet": "disputes can have an adverse impact on the overall macroeconomic environment and result in shifts and reductions in consumer spending and negative con"
+          }
+        ],
+        "validCitationCount": 1,
+        "invalidCitationCount": 0,
+        "passageMatchRate": 1,
+        "cutoffCompliant": true,
+        "numericalDiscrepancies": [],
+        "contradictions": [],
+        "ungroundedClaims": [],
+        "qualifications": [],
+        "untrustedBoundarySafe": true
+      },
+      "evaluation": {
+        "factualCorrectnessScore": 0.15,
+        "numericalCorrectnessScore": 1,
+        "citationFaithfulnessScore": 1,
+        "unsupportedClaimRate": 0.85,
+        "historicalCutoffCompliant": true,
+        "abstentionCorrect": true,
+        "contradictionDetected": false,
+        "reasoningNotes": "Citations: 1 found (1 valid). Tools: search_financial_documents"
+      }
+    }
+  ]
+}

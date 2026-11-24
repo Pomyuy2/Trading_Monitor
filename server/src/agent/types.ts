@@ -42,6 +42,7 @@ export interface ToolExecutionStep {
   summary: string;
   error?: string;
   evidenceSource?: AskSource;
+  data?: any;
 }
 
 export type InvestmentVerdictCategory =
@@ -129,4 +130,7 @@ export interface ResearchAgentResponse {
   toolSteps: ToolExecutionStep[];
   model: string;
   executionTimeMs: number;
+  plan?: any;
+  verification?: any;
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
 }

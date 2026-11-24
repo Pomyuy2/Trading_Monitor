@@ -535,6 +535,10 @@ export interface InvestmentResearchReport {
     staleFeeds: string[];
     sources: AskSource[];
   };
+
+  supportingEvidence?: Array<{ claim: string; citationId: string; document?: string }>;
+  contradictoryEvidence?: Array<{ topic: string; description: string; sourceA?: string; sourceB?: string }>;
+  qualifications?: string[];
 }
 
 export interface ToolExecutionStep {
@@ -545,6 +549,7 @@ export interface ToolExecutionStep {
   summary: string;
   error?: string;
   evidenceSource?: AskSource;
+  data?: any;
 }
 
 export interface ChatMessage {
@@ -554,7 +559,7 @@ export interface ChatMessage {
   sources?: AskSource[];
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
-  agentVersion?: 'v1' | 'v2';
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   /** Assistant messages: the stocks the answer looked up, and whether it covered the watchlist / was cut at the limit. */
   symbols?: string[];
   watchlist?: boolean;
@@ -566,6 +571,7 @@ export interface ChatMessage {
 
 export type AgentStreamEventType =
   | 'agent_start'
+  | 'plan_ready'
   | 'tool_start'
   | 'tool_result'
   | 'text_delta'
@@ -576,6 +582,10 @@ export type AgentStreamEventType =
 export interface AgentStartEvent {
   query: string;
   symbol?: string;
+}
+
+export interface PlanReadyEvent {
+  plan: any;
 }
 
 export interface ToolStartEvent {
@@ -629,10 +639,12 @@ export interface ConversationDetail {
 export interface StreamDoneEvent {
   executionTimeMs: number;
   model: string;
-  agentVersion?: 'v1' | 'v2';
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   sources: AskSource[];
   toolSteps: ToolExecutionStep[];
   conversationId?: string;
+  plan?: any;
+  verification?: any;
 }
 
 export interface StreamErrorEvent {
@@ -641,6 +653,7 @@ export interface StreamErrorEvent {
 
 export type AgentStreamEvent =
   | { type: 'agent_start'; data: AgentStartEvent }
+  | { type: 'plan_ready'; data: PlanReadyEvent }
   | { type: 'tool_start'; data: ToolStartEvent }
   | { type: 'tool_result'; data: ToolResultEvent }
   | { type: 'text_delta'; data: TextDeltaEvent }
@@ -652,7 +665,7 @@ export interface AskAiRequest {
   symbol?: string;
   question: string;
   lang: Lang;
-  agentVersion?: 'v1' | 'v2';
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   contextMode?: ChatContextMode;
   contextRef?: string;
   conversationId?: string;
@@ -669,7 +682,9 @@ export interface AskAiResponse {
   report?: InvestmentResearchReport | null;
   toolSteps?: ToolExecutionStep[];
   model: string;
-  agentVersion?: 'v1' | 'v2';
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
+  plan?: any;
+  verification?: any;
   executionTimeMs?: number;
   conversationId?: string;
   /** Stocks the answer looked up in full detail, in the order the question named them. */

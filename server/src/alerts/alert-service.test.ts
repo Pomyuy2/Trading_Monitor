@@ -35,7 +35,13 @@ beforeAll(async () => {
   const migrations = join(here, '../../prisma/migrations');
   for (const m of readdirSync(migrations).filter((d) => !d.endsWith('.toml')).sort()) {
     const sql = readFileSync(join(migrations, m, 'migration.sql'), 'utf8');
-    for (const stmt of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.$executeRawUnsafe(stmt);
+    for (const stmt of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
+      try {
+        await db.$executeRawUnsafe(stmt);
+      } catch (err: any) {
+        if (!err.message?.includes('already exists')) throw err;
+      }
+    }
   }
 });
 

@@ -2,26 +2,56 @@ import type { AgentStreamEvent, AskSource, ChatContextMode, Lang } from '@tm/sha
 import type { AgentContext, InvestmentResearchReport, InvestmentVerdictCategory, ResearchAgentResponse } from './types.js';
 import { ToolOrchestrator } from './orchestrator.js';
 import { ToolRegistry } from './tools/registry.js';
+import { ResearchPlanner } from './planner/research-planner.js';
+import { AdaptiveExecutor } from './execution/adaptive-executor.js';
+import { EvidenceVerifier } from './verification/evidence-verifier.js';
+import { ThesisSynthesizer } from './synthesis/thesis-synthesizer.js';
 
 export interface ResearchAgentOptions {
   enableFinancialRag?: boolean;
+  agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
+  enablePlanning?: boolean;
+  enableVerification?: boolean;
 }
 
 export class InvestmentResearchAgent {
   private readonly orchestrator: ToolOrchestrator;
   private readonly toolRegistry: ToolRegistry;
+  private readonly planner: ResearchPlanner;
+  private readonly adaptiveExecutor: AdaptiveExecutor;
+  private readonly verifier: EvidenceVerifier;
+  private readonly synthesizer: ThesisSynthesizer;
+
   readonly enableFinancialRag: boolean;
+  readonly agentVersion: 'v1' | 'v2' | 'v2.1' | 'v2.2';
+  readonly enablePlanning: boolean;
+  readonly enableVerification: boolean;
 
   constructor(
     baseUrl: string,
     apiKey: string,
     model: string,
-    log: { warn(msg: string): void } = console,
+    private readonly log: { info?(msg: string): void; warn(msg: string): void } = console,
     options: ResearchAgentOptions = {},
   ) {
     this.enableFinancialRag = options.enableFinancialRag ?? (process.env.FINANCIAL_RAG_ENABLED !== 'false');
+
+    // Version determination
+    if (options.agentVersion) {
+      this.agentVersion = options.agentVersion;
+    } else {
+      this.agentVersion = this.enableFinancialRag ? 'v2.2' : 'v1';
+    }
+
+    this.enablePlanning = options.enablePlanning ?? (this.agentVersion === 'v2.2' || this.agentVersion === 'v2');
+    this.enableVerification = options.enableVerification ?? (this.agentVersion === 'v2.2' || this.agentVersion === 'v2');
+
     this.toolRegistry = new ToolRegistry({ enableFinancialRag: this.enableFinancialRag });
     this.orchestrator = new ToolOrchestrator(this.toolRegistry, baseUrl, apiKey, model, log);
+    this.planner = new ResearchPlanner(baseUrl, apiKey, model);
+    this.adaptiveExecutor = new AdaptiveExecutor(this.toolRegistry, baseUrl, apiKey, model, log);
+    this.verifier = new EvidenceVerifier();
+    this.synthesizer = new ThesisSynthesizer();
   }
 
   /**
@@ -51,7 +81,7 @@ export class InvestmentResearchAgent {
     const systemPrompt = this.buildSystemPrompt(profile, isThai, contextMode, targetSymbol, contextRef);
 
     // 3. Prepare message thread
-    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_call_id?: string; tool_calls?: any[] }[] = [
       { role: 'system', content: systemPrompt },
     ];
 
@@ -68,20 +98,77 @@ export class InvestmentResearchAgent {
     } else if (contextMode === 'portfolio' && contextRef) {
       userPrompt = `[Context Portfolio ID: ${contextRef}]\n${question}`;
     }
+
+    // Check if V2.2 autonomous research planning is enabled and needed
+    const needsPlanning = this.enablePlanning && this.planner.shouldPlan(question, targetSymbol, contextMode);
+
+    if (needsPlanning) {
+      try {
+        // Plan generation
+        const plan = await this.planner.plan(question, targetSymbol, contextMode, profile);
+
+        const planPrompt = `${userPrompt}\n\nRESEARCH PLAN GUIDANCE (COMPLEXITY: ${plan.complexity.toUpperCase()}):
+Plan ID: ${plan.planId}
+Target Companies: ${plan.targetCompanies.join(', ') || 'General / Unspecified'}
+${plan.historicalTimeCutoff ? `Historical Time Cutoff: ${plan.historicalTimeCutoff} (STRICTLY NO LOOKAHEAD: Only retrieve and cite filings accepted on or before this date)` : ''}
+Research Objectives:
+${plan.researchObjectives.map((o) => ` - ${o}`).join('\n')}
+Required Tasks (Prioritize in this order):
+${plan.tasks.map((t) => ` [${t.priority.toUpperCase()}] ${t.id}: ${t.description} (Hint: ${t.toolHint})`).join('\n')}`;
+
+        messages.push({ role: 'user', content: planPrompt });
+
+        // Adaptive Execution with memoization & multi-ticker fair budget
+        const execResult = await this.adaptiveExecutor.execute(messages, ctx, plan, undefined, ctx.abortSignal);
+
+        // Deterministic & Semantic Evidence Verification
+        const verification = await this.verifier.verify(
+          execResult.finalContent,
+          execResult.steps,
+          plan.historicalTimeCutoff,
+        );
+
+        // Thesis Synthesis
+        const synthResult = this.synthesizer.synthesize(
+          execResult.finalContent,
+          execResult.steps,
+          verification,
+          plan,
+          targetSymbol,
+          profile,
+          execResult.isPartial,
+        );
+
+        const durationMs = Date.now() - startTime;
+
+        return {
+          answer: synthResult.finalAnswer,
+          report: synthResult.report,
+          sources: synthResult.sources,
+          toolSteps: execResult.steps,
+          model: execResult.model,
+          executionTimeMs: durationMs,
+          plan,
+          verification,
+          agentVersion: this.agentVersion,
+        };
+      } catch (err: any) {
+        this.log.warn(`V2.2 planning/execution exception: ${err.message}; falling back to V2.1 baseline`);
+      }
+    }
+
+    // Baseline V2.1 / V1 execution path
     messages.push({ role: 'user', content: userPrompt });
 
-    // 4. Run orchestrator
-    const result = await this.orchestrator.run(messages, ctx, {
+    const result = await this.orchestrator.run(messages as any, ctx, {
       maxSteps: 6,
       maxTotalTools: 8,
       totalTimeoutMs: 50_000,
       perToolTimeoutMs: 20_000,
     });
 
-    // 5. Parse structured report if embedded in output
     const report = extractReportFromJsonBlock(result.finalContent, targetSymbol, profile);
 
-    // 6. Clean and sanitize answer text (remove raw code block if present so it doesn't clutter UI markdown)
     let cleanAnswer = result.finalContent;
     const reportRegex = /```investment_report\s*([\s\S]*?)```/i;
     cleanAnswer = cleanAnswer.replace(reportRegex, '').trim();
@@ -95,6 +182,7 @@ export class InvestmentResearchAgent {
       toolSteps: result.steps,
       model: result.model,
       executionTimeMs: durationMs,
+      agentVersion: this.agentVersion,
     };
   }
 
@@ -133,7 +221,7 @@ export class InvestmentResearchAgent {
     const systemPrompt = this.buildSystemPrompt(profile, isThai, contextMode, targetSymbol, contextRef);
 
     // 4. Assemble messages
-    const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string }[] = [
+    const messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_call_id?: string; tool_calls?: any[] }[] = [
       { role: 'system', content: systemPrompt },
     ];
     for (const h of history.slice(-6)) {
@@ -146,9 +234,90 @@ export class InvestmentResearchAgent {
     } else if (contextMode === 'portfolio' && contextRef) {
       userPrompt = `[Context Portfolio ID: ${contextRef}]\n${question}`;
     }
+
+    // Check if V2.2 autonomous research planning is enabled and needed
+    const needsPlanning = this.enablePlanning && this.planner.shouldPlan(question, targetSymbol, contextMode);
+
+    if (needsPlanning) {
+      try {
+        const plan = await this.planner.plan(question, targetSymbol, contextMode, profile);
+
+        // Emit plan_ready event
+        await onEvent({
+          type: 'plan_ready',
+          data: { plan },
+        });
+
+        const planPrompt = `${userPrompt}\n\nRESEARCH PLAN GUIDANCE (COMPLEXITY: ${plan.complexity.toUpperCase()}):
+Plan ID: ${plan.planId}
+Target Companies: ${plan.targetCompanies.join(', ') || 'General / Unspecified'}
+${plan.historicalTimeCutoff ? `Historical Time Cutoff: ${plan.historicalTimeCutoff} (STRICTLY NO LOOKAHEAD: Only retrieve and cite filings accepted on or before this date)` : ''}
+Research Objectives:
+${plan.researchObjectives.map((o) => ` - ${o}`).join('\n')}
+Required Tasks (Prioritize in this order):
+${plan.tasks.map((t) => ` [${t.priority.toUpperCase()}] ${t.id}: ${t.description} (Hint: ${t.toolHint})`).join('\n')}`;
+
+        messages.push({ role: 'user', content: planPrompt });
+
+        // Adaptive execution with token streaming
+        const execResult = await this.adaptiveExecutor.execute(messages, ctx, plan, onEvent, signal);
+
+        // Evidence Verification
+        const verification = await this.verifier.verify(
+          execResult.finalContent,
+          execResult.steps,
+          plan.historicalTimeCutoff,
+        );
+
+        // Thesis Synthesis
+        const synthResult = this.synthesizer.synthesize(
+          execResult.finalContent,
+          execResult.steps,
+          verification,
+          plan,
+          targetSymbol,
+          profile,
+          execResult.isPartial,
+        );
+
+        if (synthResult.report) {
+          await onEvent({ type: 'report_ready', data: { report: synthResult.report } });
+        }
+
+        const durationMs = Date.now() - startTime;
+
+        await onEvent({
+          type: 'done',
+          data: {
+            executionTimeMs: durationMs,
+            model: execResult.model,
+            agentVersion: this.agentVersion,
+            sources: synthResult.sources,
+            toolSteps: execResult.steps,
+            plan,
+            verification,
+          },
+        });
+
+        return {
+          answer: synthResult.finalAnswer,
+          report: synthResult.report,
+          sources: synthResult.sources,
+          toolSteps: execResult.steps,
+          model: execResult.model,
+          executionTimeMs: durationMs,
+          plan,
+          verification,
+          agentVersion: this.agentVersion,
+        };
+      } catch (err: any) {
+        this.log.warn(`V2.2 streaming planning/execution exception: ${err.message}; falling back to V2.1 baseline`);
+      }
+    }
+
+    // Baseline fallback streaming path
     messages.push({ role: 'user', content: userPrompt });
 
-    // 5. Run stream through orchestrator
     const result = await this.orchestrator.runStream(
       messages,
       ctx,
@@ -157,25 +326,23 @@ export class InvestmentResearchAgent {
       signal,
     );
 
-    // 6. Parse structured report
     const report = extractReportFromJsonBlock(result.finalContent, targetSymbol, profile);
     if (report) {
       await onEvent({ type: 'report_ready', data: { report } });
     }
 
-    // 7. Clean and sanitize answer text
     let cleanAnswer = result.finalContent;
     const reportRegex = /```investment_report\s*([\s\S]*?)```/i;
     cleanAnswer = cleanAnswer.replace(reportRegex, '').trim();
 
     const durationMs = Date.now() - startTime;
 
-    // 8. Emit done event
     await onEvent({
       type: 'done',
       data: {
         executionTimeMs: durationMs,
         model: result.model,
+        agentVersion: this.agentVersion,
         sources: result.sources,
         toolSteps: result.steps,
       },
@@ -188,6 +355,7 @@ export class InvestmentResearchAgent {
       toolSteps: result.steps,
       model: result.model,
       executionTimeMs: durationMs,
+      agentVersion: this.agentVersion,
     };
   }
 

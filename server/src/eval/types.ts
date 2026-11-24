@@ -8,7 +8,10 @@ export type BenchmarkCategory =
   | 'guidance_consistency'
   | 'valuation_assumption_support'
   | 'cross_company_comparison'
-  | 'unsupported_abstention';
+  | 'unsupported_abstention'
+  | 'deep_research_planning'
+  | 'contradiction_detection'
+  | 'evidence_support_verification';
 
 export interface ExpectedDocument {
   symbol: string;
@@ -50,7 +53,7 @@ export interface RetrievalMetrics {
 export interface QuestionEvaluationResult {
   questionId: string;
   category: BenchmarkCategory;
-  agentVersion: 'v1' | 'v2';
+  agentVersion: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   success: boolean;
   answer: string;
   executionTimeMs: number;
@@ -64,6 +67,8 @@ export interface QuestionEvaluationResult {
     recallAt5: boolean;
     reciprocalRank: number;
   };
+  plan?: any;
+  verification?: any;
   evaluation: {
     factualCorrectnessScore: number; // 0.0 - 1.0
     numericalCorrectnessScore?: number; // 0.0 - 1.0
@@ -71,12 +76,13 @@ export interface QuestionEvaluationResult {
     unsupportedClaimRate: number; // 0.0 - 1.0 (lower is better)
     historicalCutoffCompliant: boolean;
     abstentionCorrect: boolean;
+    contradictionDetected?: boolean;
     reasoningNotes: string;
   };
 }
 
 export interface BenchmarkAggregateResults {
-  agentVersion: 'v1' | 'v2';
+  agentVersion: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   totalQuestions: number;
   byCategory: Record<
     BenchmarkCategory,

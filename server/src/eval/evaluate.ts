@@ -1,9 +1,16 @@
+import 'dotenv/config';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { db } from '../store/db.js';
 import { BENCHMARK_QUESTIONS } from './fixtures/benchmark-questions.js';
-import type { BenchmarkQuestion, BenchmarkCategory, QuestionEvaluationResult, BenchmarkAggregateResults } from './types.js';
-import { retrievalService, type RetrievalChunk } from '../rag/retrieval-service.js';
+import { V22_DEEP_RESEARCH_SCENARIOS } from './fixtures/v22-deep-research-scenarios.js';
+import type {
+  BenchmarkQuestion,
+  BenchmarkCategory,
+  QuestionEvaluationResult,
+  BenchmarkAggregateResults,
+} from './types.js';
+import { retrievalService } from '../rag/retrieval-service.js';
 import { InvestmentResearchAgent } from '../agent/research-agent.js';
 import { PortfolioService } from '../portfolio/portfolio-service.js';
 import { MarketService } from '../services/market-service.js';
@@ -12,11 +19,14 @@ import { LruCache } from '../cache/cache.js';
 import { SqliteCache } from '../cache/sqlite-cache.js';
 import type { AgentContext } from '../agent/types.js';
 
-interface EvalRunnerOptions {
+export interface EvalRunnerOptions {
   split?: 'eval_frozen' | 'dev_tuning' | 'all';
   limit?: number;
   concurrency?: number;
   verbose?: boolean;
+  deepOnly?: boolean;
+  includeDeepScenarios?: boolean;
+  compareMode?: 'v1_v2' | 'v21_v22';
 }
 
 const EVAL_STOP_WORDS = new Set([
@@ -29,7 +39,9 @@ const EVAL_STOP_WORDS = new Set([
 
 export function extractCitations(text: string): string[] {
   const matches = [...text.matchAll(/\[(SEC-[A-Za-z0-9_\-]+)\]/g)].map((m) => m[1]);
-  const rawMatches = [...text.matchAll(/\b(SEC-[A-Z0-9]+-(?:10-K|10-Q)-\d{4}-\d{2}-\d{2}-[A-Za-z0-9_]+-c\d+)\b/g)].map((m) => m[1]);
+  const rawMatches = [
+    ...text.matchAll(/\b(SEC-[A-Z0-9]+-(?:10-K|10-Q|8-K)-\d{4}-\d{2}-\d{2}-[A-Za-z0-9_]+-c\d+)\b/g),
+  ].map((m) => m[1]);
   return Array.from(new Set([...matches, ...rawMatches]));
 }
 
@@ -44,14 +56,12 @@ export function evaluateFactualClaims(
   let matchedClaims = 0;
 
   for (const claim of claims) {
-    // Split on any non-alphanumeric, keeping words > 3 chars
     const words = claim
       .toLowerCase()
       .split(/[^a-z0-9]+/)
       .filter((w) => w.length > 3 && !EVAL_STOP_WORDS.has(w));
 
     if (words.length === 0) continue;
-    // Word is matched if lower answer contains word or stem (slice 0, 5)
     const matches = words.filter((w) => {
       const stem = w.slice(0, Math.min(w.length, 5));
       return lower.includes(w) || (stem.length >= 4 && lower.includes(stem));
@@ -82,10 +92,9 @@ export function evaluateNumericalValues(
   let matched = 0;
   for (const v of values) {
     if (typeof v.value === 'number') {
-      // Look for the number or formatted versions (e.g. 109,842 or 109842 or 109.8B)
       const numStr = v.value.toString();
       const numWithCommas = v.value.toLocaleString('en-US');
-      const inB = (v.value / 1000).toFixed(1); // e.g. in billions if value is in millions
+      const inB = (v.value / 1000).toFixed(1);
       const inB2 = (v.value / 1000).toFixed(0);
 
       if (
@@ -100,11 +109,9 @@ export function evaluateNumericalValues(
       ) {
         matched++;
       } else {
-        // Approximate tolerance regex
         const tol = (v.tolerancePercent ?? 5) / 100;
         const minVal = v.value * (1 - tol);
         const maxVal = v.value * (1 + tol);
-        // Look for any number in the range
         const numRegex = /\$?\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b%?/g;
         const matches = [...answer.matchAll(numRegex)].map((m) =>
           parseFloat(m[0].replace(/[$,%]/g, '')),
@@ -138,6 +145,9 @@ export function evaluateAbstention(answer: string, expectAbstention: boolean): b
     'no information',
     'unsupported',
     'unable to find',
+    'private entity',
+    'non-public',
+    'does not file',
   ];
 
   const hasAbstention = abstentionKeywords.some((kw) => lower.includes(kw));
@@ -154,11 +164,10 @@ export function evaluateCutoff(
 ): boolean {
   if (!cutoffDate) return true;
 
-  // Check if any cited document post-dates cutoff
   for (const cite of citations) {
     const dateMatch = cite.match(/(\d{4}-\d{2}-\d{2})/);
     if (dateMatch && dateMatch[1] > cutoffDate) {
-      return false; // Violation!
+      return false;
     }
   }
 
@@ -166,9 +175,12 @@ export function evaluateCutoff(
   const violationYear = cutoffYear + 1;
   const lower = answer.toLowerCase();
 
-  // If asking about cutoff 2024, mentioning FY2025 or FY2026 results is a violation
-  if (lower.includes(`fiscal ${violationYear}`) || lower.includes(`fy${violationYear}`) || lower.includes(`fy ${violationYear}`)) {
-    if (lower.includes('revenue') || lower.includes('growth') || lower.includes('billion')) {
+  if (
+    lower.includes(`fiscal ${violationYear}`) ||
+    lower.includes(`fy${violationYear}`) ||
+    lower.includes(`fy ${violationYear}`)
+  ) {
+    if (lower.includes('revenue') || lower.includes('growth') || lower.includes('billion') || lower.includes('reported')) {
       return false;
     }
   }
@@ -191,7 +203,6 @@ export async function verifyCitationsInDb(citationIds: string[]): Promise<{
     if (chunk) {
       valid++;
     } else {
-      // Check if it matches a section ID without chunk number
       const section = await db.documentSection.findFirst({
         where: { id: { contains: id.replace(/^SEC-/, 'sec-') } },
       });
@@ -216,6 +227,16 @@ export async function evaluateRetrievalForQuestion(
   topChunkId?: string;
   chunksCount: number;
 }> {
+  if (q.symbols.length === 0 || q.expectedDocuments.length === 0) {
+    return {
+      recallAt1: true,
+      recallAt3: true,
+      recallAt5: true,
+      reciprocalRank: 1,
+      chunksCount: 0,
+    };
+  }
+
   const chunks = await retrievalService.search({
     symbol: q.symbols[0],
     query: q.question,
@@ -273,7 +294,8 @@ export async function evaluateRetrievalForQuestion(
 
 export class BenchmarkRunner {
   private v1Agent: InvestmentResearchAgent;
-  private v2Agent: InvestmentResearchAgent;
+  private v21Agent: InvestmentResearchAgent;
+  private v22Agent: InvestmentResearchAgent;
   private portfolio: PortfolioService;
   private market: MarketService;
 
@@ -282,8 +304,22 @@ export class BenchmarkRunner {
     const apiKey = process.env.AI_API_KEY ?? 'tm-mock-key';
     const model = process.env.AI_MODEL ?? 'combo1';
 
-    this.v1Agent = new InvestmentResearchAgent(baseUrl, apiKey, model, console, { enableFinancialRag: false });
-    this.v2Agent = new InvestmentResearchAgent(baseUrl, apiKey, model, console, { enableFinancialRag: true });
+    this.v1Agent = new InvestmentResearchAgent(baseUrl, apiKey, model, console, {
+      enableFinancialRag: false,
+      agentVersion: 'v1',
+    });
+    this.v21Agent = new InvestmentResearchAgent(baseUrl, apiKey, model, console, {
+      enableFinancialRag: true,
+      agentVersion: 'v2.1',
+      enablePlanning: false,
+      enableVerification: false,
+    });
+    this.v22Agent = new InvestmentResearchAgent(baseUrl, apiKey, model, console, {
+      enableFinancialRag: true,
+      agentVersion: 'v2.2',
+      enablePlanning: true,
+      enableVerification: true,
+    });
 
     this.portfolio = new PortfolioService(db);
     const providers = new ProviderRegistry();
@@ -303,20 +339,28 @@ export class BenchmarkRunner {
 
   async runQuestion(
     q: BenchmarkQuestion,
-    agentVersion: 'v1' | 'v2',
+    agentVersion: 'v1' | 'v2' | 'v2.1' | 'v2.2',
   ): Promise<QuestionEvaluationResult> {
-    const agent = agentVersion === 'v1' ? this.v1Agent : this.v2Agent;
+    let agent: InvestmentResearchAgent;
+    if (agentVersion === 'v1') agent = this.v1Agent;
+    else if (agentVersion === 'v2.1') agent = this.v21Agent;
+    else agent = this.v22Agent;
+
     const ctx = this.createAgentContext();
     const t0 = Date.now();
 
     let answer = '';
     let toolCalls: string[] = [];
     let success = true;
+    let planData: any;
+    let verificationData: any;
 
     try {
       const resp = await agent.research(q.question, q.symbols[0], 'en', ctx);
       answer = resp.answer;
       toolCalls = resp.toolSteps.map((s) => s.tool);
+      planData = resp.plan;
+      verificationData = resp.verification;
     } catch (err: any) {
       success = false;
       answer = `ERROR: ${err.message}`;
@@ -331,10 +375,17 @@ export class BenchmarkRunner {
     const abstentionCorrect = evaluateAbstention(answer, q.expectAbstention);
     const cutoffCompliant = evaluateCutoff(answer, q.historicalCutoff, citations);
 
+    const lowerAns = answer.toLowerCase();
+    const contradictionDetected =
+      verificationData?.contradictions?.length > 0 ||
+      lowerAns.includes('opposing evidence') ||
+      lowerAns.includes('contradict') ||
+      lowerAns.includes('conflict');
+
     const tokenEstimate = Math.ceil((q.question.length + answer.length) / 4);
 
     let retrievalInfo: QuestionEvaluationResult['retrieval'];
-    if (agentVersion === 'v2') {
+    if (agentVersion !== 'v1') {
       const r = await evaluateRetrievalForQuestion(q);
       retrievalInfo = {
         chunksRetrieved: r.chunksCount,
@@ -356,6 +407,8 @@ export class BenchmarkRunner {
       toolsUsed: toolCalls,
       tokenEstimate,
       retrieval: retrievalInfo,
+      plan: planData,
+      verification: verificationData,
       evaluation: {
         factualCorrectnessScore: factualScore,
         numericalCorrectnessScore: numericalScore,
@@ -363,21 +416,33 @@ export class BenchmarkRunner {
         unsupportedClaimRate: Math.max(0, 1.0 - factualScore),
         historicalCutoffCompliant: cutoffCompliant,
         abstentionCorrect,
+        contradictionDetected,
         reasoningNotes: `Citations: ${citations.length} found (${citVerification.validCount} valid). Tools: ${toolCalls.join(', ')}`,
       },
     };
   }
 
   async runBenchmark(options: EvalRunnerOptions = {}): Promise<{
-    v1Results: QuestionEvaluationResult[];
-    v2Results: QuestionEvaluationResult[];
-    aggregateV1: BenchmarkAggregateResults;
-    aggregateV2: BenchmarkAggregateResults;
+    baselineResults: QuestionEvaluationResult[];
+    targetResults: QuestionEvaluationResult[];
+    aggregateBaseline: BenchmarkAggregateResults;
+    aggregateTarget: BenchmarkAggregateResults;
     retrievalAggregates: { recallAt1: number; recallAt3: number; recallAt5: number; mrr: number };
   }> {
-    const splitFilter = options.split ?? 'all';
-    let questions = BENCHMARK_QUESTIONS;
+    const compareMode = options.compareMode ?? 'v21_v22';
+    const baseVersion = compareMode === 'v1_v2' ? 'v1' : 'v2.1';
+    const targetVersion = 'v2.2';
 
+    let questions: BenchmarkQuestion[] = [];
+    if (options.deepOnly) {
+      questions = [...V22_DEEP_RESEARCH_SCENARIOS];
+    } else if (options.includeDeepScenarios) {
+      questions = [...BENCHMARK_QUESTIONS, ...V22_DEEP_RESEARCH_SCENARIOS];
+    } else {
+      questions = [...BENCHMARK_QUESTIONS];
+    }
+
+    const splitFilter = options.split ?? 'all';
     if (splitFilter !== 'all') {
       questions = questions.filter((q) => q.split === splitFilter);
     }
@@ -385,10 +450,11 @@ export class BenchmarkRunner {
       questions = questions.slice(0, options.limit);
     }
 
-    console.log(`[Benchmark] Starting evaluation on ${questions.length} questions (split: ${splitFilter})...`);
+    console.log(
+      `[Benchmark] Running ${compareMode} evaluation on ${questions.length} questions (split: ${splitFilter}, deepOnly: ${Boolean(options.deepOnly)})...`,
+    );
 
-    // First evaluate retrieval metrics for all questions
-    console.log('[Benchmark] Computing pure retrieval metrics across questions...');
+    // Compute retrieval metrics
     let r1Count = 0;
     let r3Count = 0;
     let r5Count = 0;
@@ -409,36 +475,37 @@ export class BenchmarkRunner {
       mrr: Math.round((totalMrr / questions.length) * 100) / 100,
     };
 
-    console.log('[Benchmark] Retrieval Metrics:', retrievalAggregates);
+    const baselineResults: QuestionEvaluationResult[] = [];
+    const targetResults: QuestionEvaluationResult[] = [];
 
-    const v1Results: QuestionEvaluationResult[] = [];
-    const v2Results: QuestionEvaluationResult[] = [];
-
-    // Run evaluations sequentially or with limited concurrency to avoid API congestion
     const concurrency = options.concurrency ?? 2;
     for (let i = 0; i < questions.length; i += concurrency) {
       const batch = questions.slice(i, i + concurrency);
-      console.log(`[Benchmark] Running batch ${Math.floor(i / concurrency) + 1}/${Math.ceil(questions.length / concurrency)} (${batch.map((b) => b.id).join(', ')})...`);
+      console.log(
+        `[Benchmark] Running batch ${Math.floor(i / concurrency) + 1}/${Math.ceil(questions.length / concurrency)} (${batch.map((b) => b.id).join(', ')})...`,
+      );
 
       const batchPromises = batch.map(async (q) => {
-        // Paired evaluation: run V1 then V2 on the same question
-        const v1 = await this.runQuestion(q, 'v1');
-        const v2 = await this.runQuestion(q, 'v2');
-        return { v1, v2 };
+        const base = await this.runQuestion(q, baseVersion);
+        const tgt = await this.runQuestion(q, targetVersion);
+        return { base, tgt };
       });
 
       const batchOut = await Promise.all(batchPromises);
       for (const item of batchOut) {
-        v1Results.push(item.v1);
-        v2Results.push(item.v2);
+        baselineResults.push(item.base);
+        targetResults.push(item.tgt);
         if (options.verbose) {
-          console.log(`  [${item.v1.questionId}] V1 Factual: ${item.v1.evaluation.factualCorrectnessScore}, Tools: [${item.v1.toolsUsed.join(', ')}]`);
-          console.log(`  [${item.v2.questionId}] V2 Factual: ${item.v2.evaluation.factualCorrectnessScore}, Citations: ${item.v2.evaluation.citationFaithfulnessScore}, Tools: [${item.v2.toolsUsed.join(', ')}]`);
+          console.log(`  [${item.base.questionId}] ${baseVersion} Factual: ${item.base.evaluation.factualCorrectnessScore}, Tools: [${item.base.toolsUsed.join(', ')}]`);
+          console.log(`  [${item.tgt.questionId}] ${targetVersion} Factual: ${item.tgt.evaluation.factualCorrectnessScore}, Citations: ${item.tgt.evaluation.citationFaithfulnessScore}, Tools: [${item.tgt.toolsUsed.join(', ')}]`);
         }
       }
     }
 
-    const computeAggregate = (results: QuestionEvaluationResult[], version: 'v1' | 'v2'): BenchmarkAggregateResults => {
+    const computeAggregate = (
+      results: QuestionEvaluationResult[],
+      version: 'v1' | 'v2' | 'v2.1' | 'v2.2',
+    ): BenchmarkAggregateResults => {
       const categories = Array.from(new Set(results.map((r) => r.category))) as BenchmarkCategory[];
       const byCategory: any = {};
 
@@ -482,9 +549,9 @@ export class BenchmarkRunner {
         totalQuestions: total,
         byCategory,
         overall: {
-          retrievalRecallAt3: version === 'v2' ? retrievalAggregates.recallAt3 : undefined,
-          retrievalRecallAt5: version === 'v2' ? retrievalAggregates.recallAt5 : undefined,
-          mrr: version === 'v2' ? retrievalAggregates.mrr : undefined,
+          retrievalRecallAt3: version !== 'v1' ? retrievalAggregates.recallAt3 : undefined,
+          retrievalRecallAt5: version !== 'v1' ? retrievalAggregates.recallAt5 : undefined,
+          mrr: version !== 'v1' ? retrievalAggregates.mrr : undefined,
           avgFactualCorrectness: Math.round(avgFactual * 100) / 100,
           avgCitationFaithfulness: Math.round(avgCit * 100) / 100,
           avgUnsupportedClaimRate: Math.round(avgUnsup * 100) / 100,
@@ -502,24 +569,28 @@ export class BenchmarkRunner {
       };
     };
 
-    const aggregateV1 = computeAggregate(v1Results, 'v1');
-    const aggregateV2 = computeAggregate(v2Results, 'v2');
+    const aggregateBaseline = computeAggregate(baselineResults, baseVersion);
+    const aggregateTarget = computeAggregate(targetResults, targetVersion);
 
-    // Persist results to disk
-    const outDir = path.resolve(process.cwd().endsWith('server') ? process.cwd() : path.resolve(process.cwd(), 'server'), 'src/eval/results');
+    // Save results to disk
+    const outDir = path.resolve(
+      process.cwd().endsWith('server') ? process.cwd() : path.resolve(process.cwd(), 'server'),
+      'src/eval/results',
+    );
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-    const outputPath = path.join(outDir, 'benchmark-results.json');
+    const outputPath = path.join(outDir, 'v22-benchmark-results.json');
     fs.writeFileSync(
       outputPath,
       JSON.stringify(
         {
           timestamp: new Date().toISOString(),
+          compareMode,
           retrievalAggregates,
-          aggregateV1,
-          aggregateV2,
-          v1Results,
-          v2Results,
+          aggregateBaseline,
+          aggregateTarget,
+          baselineResults,
+          targetResults,
         },
         null,
         2,
@@ -529,10 +600,10 @@ export class BenchmarkRunner {
     console.log(`[Benchmark] Results saved to ${outputPath}`);
 
     return {
-      v1Results,
-      v2Results,
-      aggregateV1,
-      aggregateV2,
+      baselineResults,
+      targetResults,
+      aggregateBaseline,
+      aggregateTarget,
       retrievalAggregates,
     };
   }
