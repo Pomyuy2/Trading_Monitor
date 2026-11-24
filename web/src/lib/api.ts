@@ -222,7 +222,7 @@ export async function askAi(
     contextMode?: ChatContextMode;
     contextRef?: string | null;
     conversationId?: string;
-    agentVersion?: 'v1' | 'v2';
+    agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   },
 ): Promise<AskAiResponse> {
   if (typeof symbolOrReq === 'object' && symbolOrReq !== null && 'question' in symbolOrReq) {
@@ -270,7 +270,7 @@ export async function askAiStream(
     contextMode?: ChatContextMode;
     contextRef?: string | null;
     conversationId?: string;
-    agentVersion?: 'v1' | 'v2';
+    agentVersion?: 'v1' | 'v2' | 'v2.1' | 'v2.2';
   },
 ): Promise<void> {
   const res = await fetch('/api/ai/ask/stream', {

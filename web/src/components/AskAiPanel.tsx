@@ -747,9 +747,9 @@ export function AskAiPanel({ open, onClose, initialMode = 'global', symbol, quot
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent">
                           <SparkIcon width={14} height={14} />
                           <span>{t('title')}</span>
-                          {m.agentVersion === 'v2' && (
+                          {m.agentVersion && m.agentVersion !== 'v1' && (
                             <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold text-accent tracking-normal normal-case">
-                              V2 Beta (SEC RAG)
+                              {m.agentVersion === 'v2.2' ? 'V2.2 Beta (Plan & Verify)' : m.agentVersion === 'v2.1' ? 'V2.1 Beta (SEC RAG)' : 'V2 Beta (SEC RAG)'}
                             </span>
                           )}
                         </div>
