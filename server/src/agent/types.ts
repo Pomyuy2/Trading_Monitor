@@ -121,6 +121,10 @@ export interface InvestmentResearchReport {
     staleFeeds: string[];
     sources: AskSource[];
   };
+
+  supportingEvidence?: Array<{ claim: string; citationId: string; document?: string }>;
+  contradictoryEvidence?: Array<{ topic: string; description: string; sourceA?: string; sourceB?: string }>;
+  qualifications?: string[];
 }
 
 export interface ResearchAgentResponse {
