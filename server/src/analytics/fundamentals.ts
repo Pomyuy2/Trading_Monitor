@@ -14,6 +14,7 @@ export interface PeriodFinancials {
   costOfGoodsSold?: number | null;
   operatingCashFlow?: number | null;
   capitalExpenditures?: number | null;
+  freeCashFlow?: number | null;
   totalAssets?: number | null;
   currentAssets?: number | null;
   cashAndEquivalents?: number | null;
@@ -154,6 +155,8 @@ export function calculateFundamentalMetrics(
   if (latest.operatingCashFlow != null) {
     const capex = latest.capitalExpenditures != null ? Math.abs(latest.capitalExpenditures) : 0;
     freeCashFlow = latest.operatingCashFlow - capex;
+  } else if (latest.freeCashFlow != null) {
+    freeCashFlow = latest.freeCashFlow;
   }
   const fcfMargin = safeDiv(freeCashFlow, rev);
 

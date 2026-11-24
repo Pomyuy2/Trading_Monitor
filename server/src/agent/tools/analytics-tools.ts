@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { PeriodFacts } from '@tm/shared';
 import type { ToolDefinition, ToolResult } from '../types.js';
 import {
   calculateFundamentalMetrics,
@@ -21,6 +22,29 @@ import {
 
 function cleanSymbol(sym: string): string {
   return sym.trim().toUpperCase();
+}
+
+function mapPeriodFactsToFinancials(facts?: PeriodFacts[]): PeriodFinancials[] {
+  if (!facts) return [];
+  return facts.map((a) => ({
+    fiscalYear: a.fiscalYear,
+    fiscalPeriod: a.fiscalPeriod,
+    endDate: a.endDate,
+    revenue: a.revenue,
+    netIncome: a.netIncome,
+    operatingIncome: a.operatingIncome,
+    grossProfit: a.grossProfit,
+    operatingCashFlow: a.operatingCashFlow,
+    capitalExpenditures: a.capitalExpenditures,
+    freeCashFlow: a.freeCashFlow ?? (a.operatingCashFlow != null ? a.operatingCashFlow - Math.abs(a.capitalExpenditures ?? 0) : null),
+    totalAssets: a.assets,
+    stockholdersEquity: a.equity,
+    totalLiabilities: a.liabilities,
+    sharesDiluted: a.sharesOutstanding,
+    epsDiluted: a.epsDiluted,
+    cashAndEquivalents: a.cashAndEquivalents,
+    totalDebt: a.totalDebt,
+  }));
 }
 
 /** 7. calculate_indicators */
@@ -79,8 +103,10 @@ export const calculateFinancialRatiosTool: ToolDefinition<{ symbol: string }> = 
         ctx.market.quote(sym).catch(() => null),
       ]);
 
-      const annuals = (facts?.annual ?? []) as PeriodFinancials[];
+      const annuals = mapPeriodFactsToFinancials(facts?.annual);
       const metrics = calculateFundamentalMetrics(annuals, quote?.marketCap, quote?.price);
+      const latest = annuals[0];
+      const periodLabel = latest?.fiscalYear ? `FY${latest.fiscalYear}` : 'Latest';
 
       return {
         success: true,
@@ -92,7 +118,7 @@ export const calculateFinancialRatiosTool: ToolDefinition<{ symbol: string }> = 
         },
         evidenceSource: {
           id: `ratios-${sym}`,
-          label: `${sym} Financial Ratios (Rev Growth: ${metrics.revenueGrowthYoY != null ? +(metrics.revenueGrowthYoY * 100).toFixed(1) + '%' : 'N/A'}, Net Margin: ${metrics.netMargin != null ? +(metrics.netMargin * 100).toFixed(1) + '%' : 'N/A'})`,
+          label: `${sym} ${periodLabel} Financial Ratios (Rev: $${latest?.revenue ? (latest.revenue / 1e9).toFixed(2) + 'B' : 'N/A'}, Rev Growth: ${metrics.revenueGrowthYoY != null ? +(metrics.revenueGrowthYoY * 100).toFixed(1) + '%' : 'N/A'}, Net Margin: ${metrics.netMargin != null ? +(metrics.netMargin * 100).toFixed(1) + '%' : 'N/A'}, P/S: ${metrics.psRatio != null ? metrics.psRatio.toFixed(1) + 'x' : 'N/A'})`,
           type: 'guidance',
         },
       };
@@ -133,17 +159,20 @@ export const calculateValuationTool: ToolDefinition<{
       ]);
 
       const currentPrice = quote.price ?? 100;
-      const annuals = (facts?.annual ?? []) as PeriodFinancials[];
+      const annuals = mapPeriodFactsToFinancials(facts?.annual);
       const latest = annuals[0] ?? {};
 
       // Estimate shares outstanding from marketCap / price or latest annuals
       const sharesOutstanding =
+        (quote.marketCap && currentPrice > 0 ? quote.marketCap / currentPrice : undefined) ??
         latest.sharesDiluted ??
-        (quote.marketCap && currentPrice > 0 ? quote.marketCap / currentPrice : 1_000_000);
+        1_000_000;
 
       // Base Free Cash Flow
       let baseFCF = 0;
-      if (latest.operatingCashFlow != null) {
+      if (latest.freeCashFlow != null && Number.isFinite(latest.freeCashFlow)) {
+        baseFCF = latest.freeCashFlow;
+      } else if (latest.operatingCashFlow != null) {
         baseFCF = latest.operatingCashFlow - Math.abs(latest.capitalExpenditures ?? 0);
       } else if (latest.netIncome != null) {
         baseFCF = latest.netIncome * 0.9; // Approximate FCF
@@ -158,6 +187,8 @@ export const calculateValuationTool: ToolDefinition<{
         terminalGrowthRate,
       });
 
+      const periodLabel = latest?.fiscalYear ? `FY${latest.fiscalYear}` : 'Latest';
+
       return {
         success: true,
         data: dcf,
@@ -168,7 +199,7 @@ export const calculateValuationTool: ToolDefinition<{
         },
         evidenceSource: {
           id: `val-${sym}`,
-          label: `${sym} Valuation (Base Fair Value: $${dcf.scenarios.base.fairValuePerShare ?? 'N/A'}, Current: $${currentPrice})`,
+          label: `${sym} Valuation (${periodLabel} Base FCF: $${(baseFCF / 1e9).toFixed(2)}B, Base Fair Value: $${dcf.scenarios.base.fairValuePerShare ?? 'N/A'}, Current: $${currentPrice})`,
           type: 'general',
         },
       };
@@ -252,7 +283,7 @@ export const compareStocksTool: ToolDefinition<{ symbols: string[] }> = {
             ctx.market.candles(sym, '1Y').catch(() => null),
           ]);
 
-          const annuals = (facts?.annual ?? []) as PeriodFinancials[];
+          const annuals = mapPeriodFactsToFinancials(facts?.annual);
           const fundamentalMetrics = calculateFundamentalMetrics(annuals, quote?.marketCap, quote?.price);
           const technicalSummary = candles ? calculateTechnicalSummary(candles.candles) : null;
           const riskSummary = candles ? calculateStockRiskSummary(candles.candles.map((c) => c.close)) : null;

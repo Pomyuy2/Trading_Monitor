@@ -139,6 +139,41 @@ export class SecEdgarProvider extends BaseProvider {
       const usGaap = data.facts?.['us-gaap'] ?? {};
       const dei = data.facts?.['dei'] ?? {};
 
+      // 1. Index all 10-K and 10-Q filings by accession number to resolve primary period end date
+      interface FilingInfo {
+        form: string;
+        filed: string;
+        fy: number;
+        fp: string;
+        maxEnd: string;
+      }
+
+      const filings = new Map<string, FilingInfo>();
+      for (const cat of [usGaap, dei]) {
+        for (const concept of Object.values(cat)) {
+          if (!concept?.units) continue;
+          for (const rows of Object.values(concept.units)) {
+            if (!Array.isArray(rows)) continue;
+            for (const r of rows) {
+              if (!r.form?.startsWith('10-K') && !r.form?.startsWith('10-Q')) continue;
+              if (r.fy == null || !r.fp || !r.end || !r.accn) continue;
+              const f = filings.get(r.accn);
+              if (!f) {
+                filings.set(r.accn, {
+                  form: r.form,
+                  filed: r.filed,
+                  fy: r.fy,
+                  fp: r.fp,
+                  maxEnd: r.end,
+                });
+              } else if (r.end > f.maxEnd) {
+                f.maxEnd = r.end;
+              }
+            }
+          }
+        }
+      }
+
       interface MetricConcept {
         category: Record<string, FactConcept>;
         tag: string;
@@ -155,6 +190,19 @@ export class SecEdgarProvider extends BaseProvider {
           { category: usGaap, tag: 'NetIncomeLoss' },
           { category: usGaap, tag: 'ProfitLoss' },
           { category: usGaap, tag: 'NetIncomeLossAvailableToCommonStockholdersBasic' },
+        ],
+        operatingCashFlow: [
+          { category: usGaap, tag: 'NetCashProvidedByUsedInOperatingActivities' },
+        ],
+        capitalExpenditures: [
+          { category: usGaap, tag: 'PaymentsToAcquireProductiveAssets' },
+          { category: usGaap, tag: 'PaymentsToAcquirePropertyPlantAndEquipment' },
+        ],
+        operatingIncome: [
+          { category: usGaap, tag: 'OperatingIncomeLoss' },
+        ],
+        grossProfit: [
+          { category: usGaap, tag: 'GrossProfit' },
         ],
         epsBasic: [
           { category: usGaap, tag: 'EarningsPerShareBasic' },
@@ -178,6 +226,16 @@ export class SecEdgarProvider extends BaseProvider {
           { category: usGaap, tag: 'WeightedAverageNumberOfDilutedSharesOutstanding' },
           { category: usGaap, tag: 'WeightedAverageNumberOfSharesOutstandingBasic' },
         ],
+        cashAndEquivalents: [
+          { category: usGaap, tag: 'CashAndCashEquivalentsAtCarryingValue' },
+          { category: usGaap, tag: 'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents' },
+        ],
+        totalDebt: [
+          { category: usGaap, tag: 'LongTermDebtNoncurrent' },
+          { category: usGaap, tag: 'LongTermDebtCurrent' },
+          { category: usGaap, tag: 'LongTermDebt' },
+          { category: usGaap, tag: 'DebtCurrent' },
+        ],
       };
 
       interface MetricSlot {
@@ -188,6 +246,7 @@ export class SecEdgarProvider extends BaseProvider {
         accn: string;
         start?: string;
         end: string;
+        isPrimary?: boolean;
       }
 
       const annualSlots = new Map<number, Record<string, MetricSlot>>();
@@ -201,27 +260,59 @@ export class SecEdgarProvider extends BaseProvider {
             if (!Array.isArray(rows)) continue;
             for (const r of rows) {
               if (r.val == null || !Number.isFinite(r.val)) continue;
-              const isAnnual = r.fp === 'FY';
-              const isQuarter = r.fp === 'Q1' || r.fp === 'Q2' || r.fp === 'Q3' || r.fp === 'Q4';
-              if (!isAnnual && !isQuarter) continue;
+              const filing = filings.get(r.accn);
+              if (!filing) continue;
+
+              const durationDays = r.start && r.end ? (Date.parse(r.end) - Date.parse(r.start)) / 86400_000 : 0;
+              const isDurationAnnual = durationDays >= 300;
+              const isDurationQuarter = durationDays > 0 && durationDays <= 110;
+              const isInstant = !r.start;
 
               // Filter out cumulative YTD 6-month or 9-month figures from quarterly slots
-              if (r.start && r.end) {
-                const durationDays = (Date.parse(r.end) - Date.parse(r.start)) / 86400_000;
-                if (durationDays > 0) {
-                  if (isQuarter && durationDays > 110) continue; // Exclude cumulative YTD
-                  if (isAnnual && durationDays < 300) continue; // Exclude partial year
+              if (durationDays > 110 && durationDays < 300) continue;
+
+              let fy = filing.fy;
+              let fp = filing.fp;
+
+              // Accurately determine the true fiscal year and period of the row
+              if (filing.form.startsWith('10-K')) {
+                const yearsDiff = Math.round((Date.parse(filing.maxEnd) - Date.parse(r.end)) / (365.25 * 86400_000));
+                if (r.fp === 'Q1' || r.fp === 'Q2' || r.fp === 'Q3' || r.fp === 'Q4') {
+                  if (!isDurationQuarter) continue;
+                  fy = filing.fy - yearsDiff;
+                  fp = r.fp;
+                } else {
+                  if (isDurationQuarter) continue;
+                  fy = filing.fy - yearsDiff;
+                  fp = 'FY';
+                }
+              } else if (filing.form.startsWith('10-Q')) {
+                if (isDurationAnnual) continue;
+                if (isInstant) {
+                  const yearsDiff = Math.round((Date.parse(filing.maxEnd) - Date.parse(r.end)) / (365.25 * 86400_000));
+                  if (yearsDiff > 0) {
+                    fy = filing.fy - yearsDiff;
+                    fp = 'FY'; // prior fiscal year balance sheet
+                  }
+                } else {
+                  const yearsDiff = Math.round((Date.parse(filing.maxEnd) - Date.parse(r.end)) / (365.25 * 86400_000));
+                  fy = filing.fy - yearsDiff;
+                  fp = filing.fp;
                 }
               }
 
+              if (fp !== 'FY' && fp !== 'Q1' && fp !== 'Q2' && fp !== 'Q3' && fp !== 'Q4') continue;
+
+              const isAnnual = fp === 'FY';
               const targetMap = isAnnual ? annualSlots : quarterlySlots;
-              const periodKey = isAnnual ? r.fy : `${r.fy}:${r.fp}`;
+              const periodKey = isAnnual ? fy : `${fy}:${fp}`;
               let periodRecord = targetMap.get(periodKey as never);
               if (!periodRecord) {
                 periodRecord = {};
                 targetMap.set(periodKey as never, periodRecord);
               }
 
+              const isPrimary = r.end === filing.maxEnd;
               const existing = periodRecord[metricKey];
               if (!existing) {
                 periodRecord[metricKey] = {
@@ -232,6 +323,7 @@ export class SecEdgarProvider extends BaseProvider {
                   accn: r.accn,
                   start: r.start,
                   end: r.end,
+                  isPrimary,
                 };
               } else if (tagIndex < existing.tagIndex) {
                 // Higher-priority concept tag (e.g. modern ASC 606 revenue vs legacy)
@@ -243,12 +335,17 @@ export class SecEdgarProvider extends BaseProvider {
                   accn: r.accn,
                   start: r.start,
                   end: r.end,
+                  isPrimary,
                 };
               } else if (tagIndex === existing.tagIndex) {
-                // Same concept tag: choose latest filed amendment or restatement
+                // Same concept tag: prefer primary filing for this period over comparative row in another filing
                 const isAmended = r.form?.includes('/A') ?? false;
                 const existingAmended = existing.form?.includes('/A') ?? false;
-                if (r.filed > existing.filed || (r.filed === existing.filed && isAmended && !existingAmended)) {
+                const preferNew =
+                  (!existing.isPrimary && isPrimary) ||
+                  (existing.isPrimary === isPrimary &&
+                    (r.filed > existing.filed || (r.filed === existing.filed && isAmended && !existingAmended)));
+                if (preferNew) {
                   periodRecord[metricKey] = {
                     val: r.val,
                     tagIndex,
@@ -257,6 +354,7 @@ export class SecEdgarProvider extends BaseProvider {
                     accn: r.accn,
                     start: r.start,
                     end: r.end,
+                    isPrimary,
                   };
                 }
               }
@@ -275,6 +373,13 @@ export class SecEdgarProvider extends BaseProvider {
         const allSlots = Object.values(slots);
         const latestSlot = allSlots.reduce((prev, curr) => (curr.filed > prev.filed ? curr : prev), allSlots[0]);
 
+        const ocf = slots.operatingCashFlow?.val;
+        const capex = slots.capitalExpenditures?.val;
+        let freeCashFlow: number | undefined;
+        if (ocf != null && Number.isFinite(ocf)) {
+          freeCashFlow = ocf - Math.abs(capex ?? 0);
+        }
+
         return {
           fiscalYear: fy,
           fiscalPeriod: fp,
@@ -286,12 +391,19 @@ export class SecEdgarProvider extends BaseProvider {
           url: baseUrl,
           revenue: slots.revenue?.val,
           netIncome: slots.netIncome?.val,
+          operatingCashFlow: ocf,
+          capitalExpenditures: capex,
+          freeCashFlow,
+          operatingIncome: slots.operatingIncome?.val,
+          grossProfit: slots.grossProfit?.val,
           epsBasic: slots.epsBasic?.val,
           epsDiluted: slots.epsDiluted?.val,
           assets: slots.assets?.val,
           liabilities: slots.liabilities?.val,
           equity: slots.equity?.val,
           sharesOutstanding: slots.sharesOutstanding?.val,
+          cashAndEquivalents: slots.cashAndEquivalents?.val,
+          totalDebt: slots.totalDebt?.val,
         };
       };
 

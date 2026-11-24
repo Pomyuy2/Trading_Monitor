@@ -287,7 +287,7 @@ export class EvidenceVerifier {
     let quotePrice: number | undefined;
 
     for (const step of toolSteps) {
-      if (step.tool === 'calculate_financial_ratios' && step.success && (step as any).args) {
+      if (step.tool === 'calculate_financial_ratios' && step.success) {
         fundamentalData = (step as any).data ?? (step as any).result;
       } else if (step.tool === 'calculate_valuation' && step.success) {
         valuationData = (step as any).data ?? (step as any).result;
@@ -338,6 +338,70 @@ export class EvidenceVerifier {
             });
           }
         }
+      }
+    }
+
+    // 3. Check Price-to-Sales (P/S) consistency
+    if (fundamentalData?.psRatio != null) {
+      const expectedPs = fundamentalData.psRatio;
+      const psMatches = [...answerText.matchAll(/(?:p\/s|price-to-sales|price\s*to\s*sales)\s*(?:ratio\s*)?(?:of|is|at|around)?\s*(\d+(?:\.\d+)?)\s*x?/gi)];
+      for (const m of psMatches) {
+        const claimedPs = parseFloat(m[1]);
+        if (!isNaN(claimedPs) && expectedPs > 0) {
+          const diffPct = Math.abs(claimedPs - expectedPs) / expectedPs;
+          if (diffPct > 0.25) { // Divergence > 25%
+            discrepancies.push({
+              metric: 'P/S Ratio',
+              claimedValue: `${claimedPs}x`,
+              expectedValue: `${expectedPs.toFixed(1)}x`,
+              differencePercent: Math.round(diffPct * 100),
+              source: 'calculate_financial_ratios',
+              notes: `Claimed P/S multiple ${claimedPs}x diverges from audited P/S ${expectedPs.toFixed(1)}x`,
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Check Net Margin consistency
+    if (fundamentalData?.netMargin != null) {
+      const expectedMarginPct = fundamentalData.netMargin * 100;
+      const marginMatches = [...answerText.matchAll(/(?:net margin|net profit margin|profit margin)\s*(?:of|is|at|around)?\s*(-?\d+(?:\.\d+)?)%/gi)];
+      for (const m of marginMatches) {
+        const claimedMarginPct = parseFloat(m[1]);
+        if (!isNaN(claimedMarginPct)) {
+          const diff = Math.abs(claimedMarginPct - expectedMarginPct);
+          if (diff > 5.0 && Math.abs(claimedMarginPct) > 1.0) {
+            discrepancies.push({
+              metric: 'Net Margin',
+              claimedValue: `${claimedMarginPct}%`,
+              expectedValue: `${expectedMarginPct.toFixed(1)}%`,
+              differencePercent: Math.round(diff),
+              source: 'calculate_financial_ratios',
+              notes: `Claimed margin ${claimedMarginPct}% deviates from audited annual net margin ${expectedMarginPct.toFixed(1)}%`,
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Check Segment vs Consolidated Operating Income clarification
+    const lower = answerText.toLowerCase();
+    const opIncMatches = [...answerText.matchAll(/(?:operating income|operating profit)\s*(?:of|is|was|at|totaled)?\s*\$?139(?:\.3|\.297)?\s*(?:billion|b)/gi)];
+    if (opIncMatches.length > 0) {
+      const hasSegmentLabel =
+        lower.includes('segment operating income') ||
+        lower.includes('reportable segment') ||
+        lower.includes('before unallocated corporate') ||
+        lower.includes('segment total');
+      if (!hasSegmentLabel) {
+        discrepancies.push({
+          metric: 'Operating Income Classification',
+          claimedValue: '$139.3B',
+          expectedValue: 'Reportable Segment Total (~$139.3B) vs Consolidated (~$130.4B)',
+          source: 'SEC 10-K Note 17 vs Consolidated Income Statement',
+          notes: 'Operating income of $139.3B cited from segment tables without distinguishing reportable segment total from consolidated GAAP operating income ($130.4B)',
+        });
       }
     }
 

@@ -23,6 +23,7 @@ describe('SecEdgarProvider Company Facts', () => {
       body: JSON.stringify({
         '0': { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' },
         '1': { cik_str: 789019, ticker: 'MSFT', title: 'MICROSOFT CORP' },
+        '2': { cik_str: 1045810, ticker: 'NVDA', title: 'NVIDIA CORP' },
       }),
     });
   });
@@ -417,6 +418,189 @@ describe('SecEdgarProvider Company Facts', () => {
     const fy = facts.annual[0];
     expect(fy.assets).toBe(512000000000);
     expect(fy.sharesOutstanding).toBe(7450000000);
+  });
+
+  it('accurately resolves multi-year comparative rows in 10-K and 10-Q (NVDA audit regression)', async () => {
+    routes.push({
+      match: /company_tickers\.json/,
+      body: JSON.stringify({
+        '0': { cik_str: 1045810, ticker: 'NVDA', title: 'NVIDIA CORP' },
+      }),
+    });
+
+    routes.push({
+      match: /companyfacts\/CIK0001045810\.json/,
+      body: JSON.stringify({
+        cik: 1045810,
+        entityName: 'NVIDIA CORP',
+        facts: {
+          'us-gaap': {
+            Revenues: {
+              units: {
+                USD: [
+                  // Form 10-K (filed 2026-02-25, filing fy=2026, fp=FY) contains 3 comparative annual rows:
+                  // Oldest comparative year (FY2024) appears first in SEC JSON array!
+                  {
+                    start: '2023-01-30',
+                    end: '2024-01-28',
+                    val: 60922000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                  // Prior comparative year (FY2025)
+                  {
+                    start: '2024-01-29',
+                    end: '2025-01-26',
+                    val: 130497000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                  // Current reporting year (FY2026)
+                  {
+                    start: '2025-01-27',
+                    end: '2026-01-25',
+                    val: 215938000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                  // Form 10-Q (filed 2026-08-26, filing fy=2027, fp=Q2) contains comparative Q2 from prior year:
+                  {
+                    start: '2025-04-28',
+                    end: '2025-07-27',
+                    val: 46743000000,
+                    fy: 2027,
+                    fp: 'Q2',
+                    form: '10-Q',
+                    filed: '2026-08-26',
+                    accn: '0001045810-26-000075',
+                  },
+                  // Current Q2 FY2027
+                  {
+                    start: '2026-04-27',
+                    end: '2026-07-26',
+                    val: 96221000000,
+                    fy: 2027,
+                    fp: 'Q2',
+                    form: '10-Q',
+                    filed: '2026-08-26',
+                    accn: '0001045810-26-000075',
+                  },
+                ],
+              },
+            },
+            NetCashProvidedByUsedInOperatingActivities: {
+              units: {
+                USD: [
+                  {
+                    start: '2023-01-30',
+                    end: '2024-01-28',
+                    val: 28090000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                  {
+                    start: '2025-01-27',
+                    end: '2026-01-25',
+                    val: 102718000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                ],
+              },
+            },
+            PaymentsToAcquireProductiveAssets: {
+              units: {
+                USD: [
+                  {
+                    start: '2023-01-30',
+                    end: '2024-01-28',
+                    val: 1306000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                  {
+                    start: '2025-01-27',
+                    end: '2026-01-25',
+                    val: 6143000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                ],
+              },
+            },
+            OperatingIncomeLoss: {
+              units: {
+                USD: [
+                  {
+                    start: '2025-01-27',
+                    end: '2026-01-25',
+                    val: 130387000000,
+                    fy: 2026,
+                    fp: 'FY',
+                    form: '10-K',
+                    filed: '2026-02-25',
+                    accn: '0001045810-26-000021',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const sec = new SecEdgarProvider('TestAgent user@test.com');
+    const facts = await sec.getCompanyFacts('NVDA');
+
+    // 1. Verify that FY2026 is NOT overwritten by the older FY2024 comparative row
+    const fy26 = facts.annual.find((a) => a.fiscalYear === 2026);
+    expect(fy26).toBeDefined();
+    expect(fy26?.revenue).toBe(215938000000); // $215.938B, NOT $60.922B
+    expect(fy26?.operatingCashFlow).toBe(102718000000);
+    expect(fy26?.capitalExpenditures).toBe(6143000000);
+    // Base FCF must be $102.718B - $6.143B = $96.575B, NOT $26.784B!
+    expect(fy26?.freeCashFlow).toBe(96575000000);
+    expect(fy26?.operatingIncome).toBe(130387000000);
+
+    // 2. Verify that FY2025 and FY2024 comparative rows mapped to their correct years
+    const fy25 = facts.annual.find((a) => a.fiscalYear === 2025);
+    expect(fy25).toBeDefined();
+    expect(fy25?.revenue).toBe(130497000000);
+
+    const fy24 = facts.annual.find((a) => a.fiscalYear === 2024);
+    expect(fy24).toBeDefined();
+    expect(fy24?.revenue).toBe(60922000000);
+    expect(fy24?.freeCashFlow).toBe(28090000000 - 1306000000); // $26.784B (FY2024 FCF)
+
+    // 3. Verify quarterly facts: Q2 FY2027 must be $96.221B, and comparative Q2 FY2026 is $46.743B
+    const q2_27 = facts.quarterly.find((q) => q.fiscalYear === 2027 && q.fiscalPeriod === 'Q2');
+    expect(q2_27).toBeDefined();
+    expect(q2_27?.revenue).toBe(96221000000); // $96.221B, NOT $46.743B
+
+    const q2_26 = facts.quarterly.find((q) => q.fiscalYear === 2026 && q.fiscalPeriod === 'Q2');
+    expect(q2_26).toBeDefined();
+    expect(q2_26?.revenue).toBe(46743000000); // $46.743B (comparative prior year)
   });
 
   it('throws NotFoundError for unknown or non-SEC filers', async () => {

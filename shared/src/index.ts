@@ -83,12 +83,19 @@ export interface PeriodFacts {
   url: string;
   revenue?: number;
   netIncome?: number;
+  operatingCashFlow?: number;
+  capitalExpenditures?: number;
+  freeCashFlow?: number;
+  operatingIncome?: number;
+  grossProfit?: number;
   epsBasic?: number;
   epsDiluted?: number;
   assets?: number;
   liabilities?: number;
   equity?: number;
   sharesOutstanding?: number;
+  cashAndEquivalents?: number;
+  totalDebt?: number;
 }
 
 export interface FinancialStatementFacts {

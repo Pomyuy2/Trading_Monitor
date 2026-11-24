@@ -104,4 +104,55 @@ describe('EvidenceVerifier', () => {
     expect(res.contradictions[0].topic).toBe('Valuation vs Recommendation Disconnect');
     expect(res.qualifications.some((q) => q.includes('Opposing evidence'))).toBe(true);
   });
+
+  it('detects P/S ratio divergence against audited fundamentals', async () => {
+    const text = 'NVIDIA trades at an elevated P/S 65.3x multiple based on sales.';
+    const toolSteps: any[] = [
+      {
+        tool: 'calculate_financial_ratios',
+        success: true,
+        data: {
+          psRatio: 18.4,
+          netMargin: 0.556,
+          revenueGrowthYoY: 0.655,
+        },
+      },
+    ];
+
+    const res = await verifier.verify(text, toolSteps);
+    expect(res.numericalDiscrepancies.some((d) => d.metric === 'P/S Ratio')).toBe(true);
+    const disc = res.numericalDiscrepancies.find((d) => d.metric === 'P/S Ratio');
+    expect(disc?.claimedValue).toBe('65.3x');
+    expect(disc?.expectedValue).toBe('18.4x');
+  });
+
+  it('detects Net Margin deviation against audited financial facts', async () => {
+    const text = 'Operating performance remains strong with a net margin of 48.85%.';
+    const toolSteps: any[] = [
+      {
+        tool: 'calculate_financial_ratios',
+        success: true,
+        data: {
+          netMargin: 0.556, // 55.6%
+          psRatio: 18.4,
+        },
+      },
+    ];
+
+    const res = await verifier.verify(text, toolSteps);
+    expect(res.numericalDiscrepancies.some((d) => d.metric === 'Net Margin')).toBe(true);
+    const disc = res.numericalDiscrepancies.find((d) => d.metric === 'Net Margin');
+    expect(disc?.claimedValue).toBe('48.85%');
+    expect(disc?.expectedValue).toBe('55.6%');
+  });
+
+  it('flags unclassified segment operating income when consolidated is not specified', async () => {
+    const textWithoutLabel = 'NVIDIA achieved operating income of $139.3B during the period.';
+    const resWithout = await verifier.verify(textWithoutLabel, []);
+    expect(resWithout.numericalDiscrepancies.some((d) => d.metric === 'Operating Income Classification')).toBe(true);
+
+    const textWithLabel = 'NVIDIA reportable segment operating income totaled $139.3B before unallocated corporate items.';
+    const resWith = await verifier.verify(textWithLabel, []);
+    expect(resWith.numericalDiscrepancies.some((d) => d.metric === 'Operating Income Classification')).toBe(false);
+  });
 });
